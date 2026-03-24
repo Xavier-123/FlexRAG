@@ -1,8 +1,9 @@
 """
-OpenAI Structured Output generator implementation.
+vLLM-compatible structured output generator.
 
 Uses the ``with_structured_output`` feature of LangChain's ``ChatOpenAI``
-to make GPT-4o return a JSON object that is automatically validated against
+against an OpenAI-compatible endpoint (e.g. a vLLM server) to return a JSON
+object that is automatically validated against
 :class:`~flexrag.schema.RAGOutput`.
 
 Reference:
@@ -30,22 +31,30 @@ _SYSTEM_PROMPT = (
 
 
 class OpenAIGenerator(BaseGenerator):
-    """Answer generator that calls GPT-4o with OpenAI Structured Output.
+    """Answer generator that calls an LLM with structured output.
 
-    The LangChain ``with_structured_output`` method binds
+    Uses LangChain's ``with_structured_output`` against any OpenAI-compatible
+    endpoint (vLLM, OpenAI, etc.) to bind
     :class:`~flexrag.schema.RAGOutput` as the expected response schema so that
     the raw JSON returned by the model is automatically parsed and validated.
 
     Args:
-        model: OpenAI model name (e.g. ``"gpt-4o"``).
-        api_key: OpenAI API key.  When ``None`` the key is read from the
-            ``OPENAI_API_KEY`` environment variable.
+        model: Model name (e.g. ``"Qwen/Qwen2.5-7B-Instruct"``).
+        api_key: API key for the endpoint.  When ``None`` the key is read from
+            the ``OPENAI_API_KEY`` environment variable.
+        base_url: Base URL of an OpenAI-compatible API endpoint
+            (e.g. ``"http://localhost:8000/v1"`` for a vLLM server).
+            When ``None``, the official OpenAI endpoint is used.
         temperature: Sampling temperature.  Defaults to ``0`` for deterministic,
             faithful answers.
 
     Example::
 
-        gen = OpenAIGenerator(model="gpt-4o", api_key="sk-...")
+        gen = OpenAIGenerator(
+            model="Qwen/Qwen2.5-7B-Instruct",
+            api_key="my-secret-key",
+            base_url="http://localhost:8000/v1",
+        )
         output = gen.generate(
             query="What is RAG?",
             context="RAG stands for Retrieval-Augmented Generation ...",
@@ -57,13 +66,15 @@ class OpenAIGenerator(BaseGenerator):
 
     def __init__(
         self,
-        model: str = "gpt-4o",
+        model: str = "Qwen/Qwen2.5-7B-Instruct",
         api_key: str | None = None,
+        base_url: str | None = None,
         temperature: float = 0.0,
     ) -> None:
         llm = ChatOpenAI(
             model=model,
             api_key=api_key,  # type: ignore[arg-type]
+            base_url=base_url,
             temperature=temperature,
         )
         # Bind the Pydantic schema – LangChain will enforce the JSON shape.

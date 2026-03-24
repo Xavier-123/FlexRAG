@@ -15,11 +15,10 @@ class Settings(BaseSettings):
     """Application-wide settings loaded from the environment.
 
     Attributes:
-        openai_api_key: OpenAI API key used by the generator and (optionally)
-            the LlamaIndex embedding model.
-        openai_model: The OpenAI chat model name (e.g. ``"gpt-4o"``).
-        vllm_base_url: Base URL of the vLLM server that exposes the
-            embedding and reranker endpoints.
+        vllm_base_url: Base URL of the vLLM server that exposes all model
+            endpoints (LLM, embedding, and reranker).
+        vllm_api_key: API key used to authenticate against the vLLM server.
+        vllm_llm_model: Name / path of the chat LLM model served by vLLM.
         vllm_embedding_model: Name / path of the embedding model served by vLLM.
         vllm_reranker_model: Name / path of the reranker model served by vLLM.
         top_k_retrieval: Number of documents to retrieve before reranking.
@@ -34,12 +33,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    openai_api_key: str = Field(..., description="OpenAI API key")
-    openai_model: str = Field("gpt-4o", description="OpenAI chat model")
-
     vllm_base_url: str = Field(
         "http://localhost:8000",
         description="Base URL of the vLLM serving endpoint",
+    )
+    vllm_api_key: str = Field(..., description="API key for the vLLM server")
+    vllm_llm_model: str = Field(
+        "Qwen/Qwen2.5-7B-Instruct",
+        description="Chat LLM model name served by vLLM",
     )
     vllm_embedding_model: str = Field(
         "BAAI/bge-large-en-v1.5",

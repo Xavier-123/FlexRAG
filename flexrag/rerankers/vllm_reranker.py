@@ -47,6 +47,8 @@ class VLLMReranker(BaseReranker):
     Args:
         base_url: Base URL of the vLLM server.
         model: Name of the reranker model deployed on the server.
+        api_key: Optional API key sent as ``Authorization: Bearer <api_key>``
+            for servers that require authentication.
         http_client: Optional pre-built :class:`httpx.Client` (useful for
             testing / dependency injection).
 
@@ -55,6 +57,7 @@ class VLLMReranker(BaseReranker):
         reranker = VLLMReranker(
             base_url="http://localhost:8000",
             model="BAAI/bge-reranker-v2-m3",
+            api_key="my-secret-key",
         )
         top_docs = reranker.rerank(query="What is RAG?", documents=docs, top_k=3)
     """
@@ -63,10 +66,12 @@ class VLLMReranker(BaseReranker):
         self,
         base_url: str,
         model: str,
+        api_key: str | None = None,
         http_client: Any | None = None,
     ) -> None:
         self._endpoint = base_url.rstrip("/") + "/v1/rerank"
         self._model = model
+        self._api_key = api_key
         self._client: httpx.Client = http_client or httpx.Client(timeout=60.0)
 
     # ------------------------------------------------------------------
@@ -103,12 +108,16 @@ class VLLMReranker(BaseReranker):
             "documents": texts,
         }
 
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
         logger.debug(
             "Sending %d documents to reranker endpoint %s",
             len(texts),
             self._endpoint,
         )
-        response = self._client.post(self._endpoint, json=payload)
+        response = self._client.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
 
         results: list[dict[str, Any]] = response.json()["results"]
