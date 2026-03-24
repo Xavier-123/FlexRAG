@@ -10,27 +10,27 @@ processing pipeline and strict, evidence-grounded structured outputs.
 ## Architecture
 
 ```
-User Input
-    │
-    ▼
-┌──────────────────┐
-│  Retrieve Agent  │  LlamaIndex VectorStoreIndex + vLLM embeddings
-└────────┬─────────┘
-         │
-    ▼
-┌──────────────────┐
-│  Rerank Agent    │  vLLM cross-encoder (e.g. BAAI/bge-reranker-v2-m3)
-└────────┬─────────┘
-         │
-    ▼
+         User Input
+             │
+             ▼
+    ┌──────────────────┐
+    │  Retrieve Agent  │  LlamaIndex VectorStoreIndex + vLLM embeddings
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │  Rerank Agent    │  vLLM cross-encoder (e.g. BAAI/bge-reranker-v2-m3)
+    └────────┬─────────┘
+             │
+             ▼
 ┌──────────────────────────┐
 │  Context Optimiser Agent │  GPT-4o – extracts the most relevant passages
-└────────┬─────────────────┘
-         │
-    ▼
-┌──────────────────┐
-│  Generate Agent  │  GPT-4o Structured Output → { answer, evidence }
-└──────────────────┘
+└────────────┬─────────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │  Generate Agent  │  GPT-4o Structured Output → { answer, evidence }
+    └──────────────────┘
 ```
 
 ### Structured output
