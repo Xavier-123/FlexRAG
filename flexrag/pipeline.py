@@ -105,27 +105,23 @@ class RAGPipeline:
         # -- Retriever (LlamaIndex + vLLM embeddings) --
         retriever = LlamaIndexRetriever(
             index=None,
-            embed_base_url=settings.vllm_base_url,
+            embed_base_url=settings.embedding_base_url,
             embed_model_name=settings.vllm_embedding_model,
-            embed_api_key=settings.vllm_api_key,
+            embed_api_key=settings.embedding_api_key,
         )
 
         # -- Reranker (vLLM cross-encoder) --
         reranker = VLLMReranker(
-            base_url=settings.vllm_base_url,
+            base_url=settings.reranker_base_url,
             model=settings.vllm_reranker_model,
-            api_key=settings.vllm_api_key,
+            api_key=settings.reranker_api_key,
         )
-
-        # vLLM OpenAI-compatible base URL (includes /v1 path suffix)
-        # vllm_openai_base = settings.vllm_base_url.rstrip("/") + "/v1"
-        vllm_openai_base = settings.vllm_base_url
 
         # -- Context Optimiser (LLM via vLLM) --
         llm = ChatOpenAI(
             model=settings.vllm_llm_model,
-            api_key=settings.vllm_api_key,  # type: ignore[arg-type]
-            base_url=vllm_openai_base,
+            api_key=settings.llm_api_key,  # type: ignore[arg-type]
+            base_url=settings.llm_base_url,
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
@@ -133,8 +129,8 @@ class RAGPipeline:
         # -- Generator (vLLM Structured Output) --
         generator = OpenAIGenerator(
             model=settings.vllm_llm_model,
-            api_key=settings.vllm_api_key,
-            base_url=vllm_openai_base,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
         )
 
         return cls(

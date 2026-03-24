@@ -14,10 +14,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application-wide settings loaded from the environment.
 
+    Each of the three model types (LLM, embedding, reranker) has its own
+    ``base_url`` and ``api_key`` so they can be served from different
+    endpoints or authenticated independently.
+
     Attributes:
-        vllm_base_url: Base URL of the vLLM server that exposes all model
-            endpoints (LLM, embedding, and reranker).
-        vllm_api_key: API key used to authenticate against the vLLM server.
+        llm_base_url: Base URL of the LLM serving endpoint.
+        llm_api_key: API key for the LLM endpoint.
+        embedding_base_url: Base URL of the embedding model serving endpoint.
+        embedding_api_key: API key for the embedding endpoint.
+        reranker_base_url: Base URL of the reranker model serving endpoint.
+        reranker_api_key: API key for the reranker endpoint.
         vllm_llm_model: Name / path of the chat LLM model served by vLLM.
         vllm_embedding_model: Name / path of the embedding model served by vLLM.
         vllm_reranker_model: Name / path of the reranker model served by vLLM.
@@ -33,16 +40,43 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    vllm_base_url: str = Field(
+    # --- LLM ---
+    llm_base_url: str = Field(
         default="http://localhost:8018/v1",
-        validation_alias="VLLM_BASE_URL",
-        description="Base URL of the vLLM serving endpoint",
+        validation_alias="LLM_BASE_URL",
+        description="Base URL of the LLM serving endpoint",
     )
-    vllm_api_key: str = Field(
+    llm_api_key: str = Field(
         default="sk-xxxx",
-        validation_alias="VLLM_API_KEY",
-        description="API key for the vLLM server"
+        validation_alias="LLM_API_KEY",
+        description="API key for the LLM endpoint",
     )
+
+    # --- Embedding ---
+    embedding_base_url: str = Field(
+        default="http://localhost:8018/v1",
+        validation_alias="EMBEDDING_BASE_URL",
+        description="Base URL of the embedding model serving endpoint",
+    )
+    embedding_api_key: str = Field(
+        default="sk-xxxx",
+        validation_alias="EMBEDDING_API_KEY",
+        description="API key for the embedding endpoint",
+    )
+
+    # --- Reranker ---
+    reranker_base_url: str = Field(
+        default="http://localhost:8018/v1",
+        validation_alias="RERANKER_BASE_URL",
+        description="Base URL of the reranker model serving endpoint",
+    )
+    reranker_api_key: str = Field(
+        default="sk-xxxx",
+        validation_alias="RERANKER_API_KEY",
+        description="API key for the reranker endpoint",
+    )
+
+    # --- Model names ---
     vllm_llm_model: str = Field(
         "Qwen/Qwen2.5-7B-Instruct",
         validation_alias="VLLM_LLM_MODEL",
