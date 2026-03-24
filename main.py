@@ -8,8 +8,13 @@ Prerequisites
 -------------
 1. Set environment variables (or create a ``.env`` file)::
 
-       OPENAI_API_KEY=sk-...
-       VLLM_BASE_URL=http://localhost:8000
+       LLM_BASE_URL=http://localhost:8000/v1
+       LLM_API_KEY=sk-...
+       EMBEDDING_BASE_URL=http://localhost:8001/v1
+       EMBEDDING_API_KEY=sk-...
+       RERANKER_BASE_URL=http://localhost:8002/v1
+       RERANKER_API_KEY=sk-...
+       VLLM_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
        VLLM_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
        VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 

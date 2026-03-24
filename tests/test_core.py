@@ -17,6 +17,61 @@ from flexrag.schema import Document, RAGOutput, RAGState
 
 
 # ---------------------------------------------------------------------------
+# Settings tests
+# ---------------------------------------------------------------------------
+
+
+class TestSettings:
+    def test_default_values(self) -> None:
+        from flexrag.config import Settings
+
+        settings = Settings()
+        assert settings.llm_base_url == "http://localhost:8018/v1"
+        assert settings.llm_api_key == "sk-xxxx"
+        assert settings.embedding_base_url == "http://localhost:8018/v1"
+        assert settings.embedding_api_key == "sk-xxxx"
+        assert settings.reranker_base_url == "http://localhost:8018/v1"
+        assert settings.reranker_api_key == "sk-xxxx"
+
+    def test_independent_per_component_settings(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Each component should read its own env vars independently."""
+        monkeypatch.setenv("LLM_BASE_URL", "http://llm:8000/v1")
+        monkeypatch.setenv("LLM_API_KEY", "llm-secret")
+        monkeypatch.setenv("EMBEDDING_BASE_URL", "http://embed:8001/v1")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "embed-secret")
+        monkeypatch.setenv("RERANKER_BASE_URL", "http://reranker:8002/v1")
+        monkeypatch.setenv("RERANKER_API_KEY", "reranker-secret")
+
+        from flexrag.config import Settings
+
+        settings = Settings()
+        assert settings.llm_base_url == "http://llm:8000/v1"
+        assert settings.llm_api_key == "llm-secret"
+        assert settings.embedding_base_url == "http://embed:8001/v1"
+        assert settings.embedding_api_key == "embed-secret"
+        assert settings.reranker_base_url == "http://reranker:8002/v1"
+        assert settings.reranker_api_key == "reranker-secret"
+
+    def test_components_can_differ(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Verify that different components can have different base URLs and keys."""
+        monkeypatch.setenv("LLM_BASE_URL", "http://llm-host/v1")
+        monkeypatch.setenv("LLM_API_KEY", "key-a")
+        monkeypatch.setenv("EMBEDDING_BASE_URL", "http://embed-host/v1")
+        monkeypatch.setenv("EMBEDDING_API_KEY", "key-b")
+        monkeypatch.setenv("RERANKER_BASE_URL", "http://reranker-host/v1")
+        monkeypatch.setenv("RERANKER_API_KEY", "key-c")
+
+        from flexrag.config import Settings
+
+        s = Settings()
+        # All three pairs must be distinct
+        urls = {s.llm_base_url, s.embedding_base_url, s.reranker_base_url}
+        keys = {s.llm_api_key, s.embedding_api_key, s.reranker_api_key}
+        assert len(urls) == 3
+        assert len(keys) == 3
+
+
+# ---------------------------------------------------------------------------
 # Schema tests
 # ---------------------------------------------------------------------------
 
