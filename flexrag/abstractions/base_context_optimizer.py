@@ -21,7 +21,7 @@ class BaseContextOptimizer(ABC):
     """
 
     @abstractmethod
-    def optimize(
+    async def optimize(
         self,
         query: str,
         documents: list[Document],

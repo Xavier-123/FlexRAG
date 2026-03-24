@@ -20,7 +20,7 @@ class BaseGenerator(ABC):
     """
 
     @abstractmethod
-    def generate(
+    async def generate(
         self,
         query: str,
         context: str,

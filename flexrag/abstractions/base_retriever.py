@@ -21,7 +21,7 @@ class BaseRetriever(ABC):
     """
 
     @abstractmethod
-    def retrieve(self, query: str, top_k: int) -> list[Document]:
+    async def retrieve(self, query: str, top_k: int) -> list[Document]:
         """Retrieve the most relevant documents for *query*.
 
         Args:

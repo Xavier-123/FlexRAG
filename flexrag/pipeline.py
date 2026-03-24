@@ -163,6 +163,26 @@ class RAGPipeline:
     def run(self, query: str) -> RAGOutput:
         """Execute the full RAG pipeline for *query*.
 
+        .. deprecated::
+            Use :meth:`arun` for the async version. This sync wrapper is
+            kept for backward compatibility with callers that cannot use async.
+
+        Args:
+            query: The user's question.
+
+        Returns:
+            A :class:`~flexrag.schema.RAGOutput` containing ``answer`` and
+            ``evidence``.
+
+        Raises:
+            RuntimeError: If any pipeline node reports an unrecoverable error.
+        """
+        import asyncio
+        return asyncio.get_event_loop().run_until_complete(self.arun(query))
+
+    async def arun(self, query: str) -> RAGOutput:
+        """Execute the full RAG pipeline for *query* asynchronously.
+
         Args:
             query: The user's question.
 
@@ -174,7 +194,7 @@ class RAGPipeline:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
         logger.info("Pipeline started – query: %r", query)
-        result: dict[str, Any] = self._graph.invoke({"query": query})
+        result: dict[str, Any] = await self._graph.ainvoke({"query": query})
 
         if error := result.get("error"):
             raise RuntimeError(f"RAG pipeline error: {error}")

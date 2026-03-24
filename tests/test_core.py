@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -120,12 +120,12 @@ class TestRAGState:
 
 
 class TestVLLMReranker:
-    """Test VLLMReranker with a stubbed httpx.Client."""
+    """Test VLLMReranker with a stubbed httpx.AsyncClient."""
 
     def _make_reranker(self, stub_response: dict, api_key: str | None = None) -> Any:
         from flexrag.rerankers.vllm_reranker import VLLMReranker
 
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_resp = MagicMock()
         mock_resp.json.return_value = stub_response
         mock_resp.raise_for_status = MagicMock()
@@ -137,7 +137,8 @@ class TestVLLMReranker:
             http_client=mock_client,
         )
 
-    def test_basic_rerank(self) -> None:
+    @pytest.mark.asyncio
+    async def test_basic_rerank(self) -> None:
         docs = [Document(text="doc A"), Document(text="doc B"), Document(text="doc C")]
         stub = {
             "results": [
@@ -147,41 +148,45 @@ class TestVLLMReranker:
             ]
         }
         reranker = self._make_reranker(stub)
-        result = reranker.rerank("query", docs, top_k=2)
+        result = await reranker.rerank("query", docs, top_k=2)
         assert len(result) == 2
         assert result[0].text == "doc B"  # highest score
         assert result[0].score == pytest.approx(0.9)
 
-    def test_empty_documents(self) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_documents(self) -> None:
         reranker = self._make_reranker({"results": []})
-        result = reranker.rerank("query", [], top_k=5)
+        result = await reranker.rerank("query", [], top_k=5)
         assert result == []
 
-    def test_top_k_truncation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_top_k_truncation(self) -> None:
         docs = [Document(text=f"doc {i}") for i in range(5)]
         stub = {
             "results": [{"index": i, "relevance_score": float(i) / 10} for i in range(5)]
         }
         reranker = self._make_reranker(stub)
-        result = reranker.rerank("query", docs, top_k=2)
+        result = await reranker.rerank("query", docs, top_k=2)
         assert len(result) == 2
         assert result[0].score >= result[1].score  # descending order
 
-    def test_api_key_sent_in_header(self) -> None:
+    @pytest.mark.asyncio
+    async def test_api_key_sent_in_header(self) -> None:
         """Authorization header must be included when api_key is set."""
         docs = [Document(text="doc A")]
         stub = {"results": [{"index": 0, "relevance_score": 0.7}]}
         reranker = self._make_reranker(stub, api_key="test-secret")
-        reranker.rerank("query", docs, top_k=1)
+        await reranker.rerank("query", docs, top_k=1)
         _, call_kwargs = reranker._client.post.call_args
         assert call_kwargs["headers"]["Authorization"] == "Bearer test-secret"
 
-    def test_no_api_key_omits_header(self) -> None:
+    @pytest.mark.asyncio
+    async def test_no_api_key_omits_header(self) -> None:
         """No Authorization header should be sent when api_key is None."""
         docs = [Document(text="doc A")]
         stub = {"results": [{"index": 0, "relevance_score": 0.7}]}
         reranker = self._make_reranker(stub, api_key=None)
-        reranker.rerank("query", docs, top_k=1)
+        await reranker.rerank("query", docs, top_k=1)
         _, call_kwargs = reranker._client.post.call_args
         assert "Authorization" not in call_kwargs["headers"]
 
@@ -250,36 +255,40 @@ class TestLLMContextOptimizer:
         mock_llm = MagicMock()
         mock_msg = MagicMock()
         mock_msg.content = llm_response
-        mock_llm.invoke.return_value = mock_msg
+        mock_llm.ainvoke = AsyncMock(return_value=mock_msg)
         return LLMContextOptimizer(llm=mock_llm)
 
-    def test_basic_optimize(self) -> None:
+    @pytest.mark.asyncio
+    async def test_basic_optimize(self) -> None:
         optimizer = self._make_optimizer("Extracted passage 1.")
         docs = [Document(text="Full document text.")]
-        context = optimizer.optimize("What is RAG?", docs, max_tokens=500)
+        context = await optimizer.optimize("What is RAG?", docs, max_tokens=500)
         assert context == "Extracted passage 1."
 
-    def test_empty_documents(self) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_documents(self) -> None:
         optimizer = self._make_optimizer("")
-        context = optimizer.optimize("query", [], max_tokens=100)
+        context = await optimizer.optimize("query", [], max_tokens=100)
         assert context == ""
 
-    def test_truncation(self) -> None:
+    @pytest.mark.asyncio
+    async def test_truncation(self) -> None:
         long_response = "x" * 1000
         optimizer = self._make_optimizer(long_response)
         docs = [Document(text="doc")]
-        context = optimizer.optimize("q", docs, max_tokens=10)  # 10 * 4 = 40 chars
+        context = await optimizer.optimize("q", docs, max_tokens=10)  # 10 * 4 = 40 chars
         assert len(context) <= 40
 
-    def test_llm_failure_fallback(self) -> None:
+    @pytest.mark.asyncio
+    async def test_llm_failure_fallback(self) -> None:
         from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
 
         mock_llm = MagicMock()
-        mock_llm.invoke.side_effect = RuntimeError("LLM down")
+        mock_llm.ainvoke = AsyncMock(side_effect=RuntimeError("LLM down"))
         optimizer = LLMContextOptimizer(llm=mock_llm)
         docs = [Document(text="fallback text")]
         # Should not raise; falls back to raw concatenation
-        context = optimizer.optimize("q", docs, max_tokens=1000)
+        context = await optimizer.optimize("q", docs, max_tokens=1000)
         assert "fallback text" in context
 
 
@@ -289,33 +298,35 @@ class TestLLMContextOptimizer:
 
 
 class TestOpenAIGenerator:
-    def test_generate_returns_rag_output(self) -> None:
+    @pytest.mark.asyncio
+    async def test_generate_returns_rag_output(self) -> None:
         from flexrag.generators.openai_generator import OpenAIGenerator
 
         mock_chain = MagicMock()
-        mock_chain.invoke.return_value = RAGOutput(
+        mock_chain.ainvoke = AsyncMock(return_value=RAGOutput(
             answer="RAG is cool", evidence=["doc snippet"]
-        )
+        ))
 
         gen = OpenAIGenerator.__new__(OpenAIGenerator)
         gen._chain = mock_chain
 
-        output = gen.generate("What is RAG?", "context text", ["doc snippet"])
+        output = await gen.generate("What is RAG?", "context text", ["doc snippet"])
         assert isinstance(output, RAGOutput)
         assert output.answer == "RAG is cool"
         assert output.evidence == ["doc snippet"]
 
-    def test_evidence_fallback(self) -> None:
+    @pytest.mark.asyncio
+    async def test_evidence_fallback(self) -> None:
         from flexrag.generators.openai_generator import OpenAIGenerator
 
         mock_chain = MagicMock()
         # Return output with empty evidence list
-        mock_chain.invoke.return_value = RAGOutput(answer="answer", evidence=[])
+        mock_chain.ainvoke = AsyncMock(return_value=RAGOutput(answer="answer", evidence=[]))
 
         gen = OpenAIGenerator.__new__(OpenAIGenerator)
         gen._chain = mock_chain
 
-        output = gen.generate("query", "ctx", ["source doc 1", "source doc 2"])
+        output = await gen.generate("query", "ctx", ["source doc 1", "source doc 2"])
         # Should fall back to source_documents
         assert len(output.evidence) > 0
         assert output.evidence[0] == "source doc 1"
@@ -327,53 +338,58 @@ class TestOpenAIGenerator:
 
 
 class TestGraphNodes:
-    def test_retrieve_node(self) -> None:
+    @pytest.mark.asyncio
+    async def test_retrieve_node(self) -> None:
         from flexrag.graph.nodes import make_retrieve_node
 
-        mock_retriever = MagicMock()
+        mock_retriever = AsyncMock()
         mock_retriever.retrieve.return_value = [
             Document(text="result 1", score=0.8),
             Document(text="result 2", score=0.6),
         ]
         node = make_retrieve_node(mock_retriever, top_k=5)
-        result = node({"query": "test query"})
+        result = await node({"query": "test query"})
         assert "retrieved_docs" in result
         assert len(result["retrieved_docs"]) == 2
         assert result["retrieved_docs"][0]["text"] == "result 1"
 
-    def test_retrieve_node_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_retrieve_node_error(self) -> None:
         from flexrag.graph.nodes import make_retrieve_node
 
-        mock_retriever = MagicMock()
+        mock_retriever = AsyncMock()
         mock_retriever.retrieve.side_effect = RuntimeError("retrieval failed")
         node = make_retrieve_node(mock_retriever, top_k=5)
-        result = node({"query": "test"})
+        result = await node({"query": "test"})
         assert "error" in result
         assert "retrieval failed" in result["error"]
 
-    def test_rerank_node_skips_on_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_rerank_node_skips_on_error(self) -> None:
         from flexrag.graph.nodes import make_rerank_node
 
-        mock_reranker = MagicMock()
+        mock_reranker = AsyncMock()
         node = make_rerank_node(mock_reranker, top_k=3)
         # Pre-existing error in state should cause node to skip
-        result = node({"query": "q", "error": "upstream failure", "retrieved_docs": []})
+        result = await node({"query": "q", "error": "upstream failure", "retrieved_docs": []})
         assert result == {}
         mock_reranker.rerank.assert_not_called()
 
-    def test_generate_node_skips_on_error(self) -> None:
+    @pytest.mark.asyncio
+    async def test_generate_node_skips_on_error(self) -> None:
         from flexrag.graph.nodes import make_generate_node
 
-        mock_generator = MagicMock()
+        mock_generator = AsyncMock()
         node = make_generate_node(mock_generator)
-        result = node({"query": "q", "error": "something went wrong"})
+        result = await node({"query": "q", "error": "something went wrong"})
         assert result == {}
         mock_generator.generate.assert_not_called()
 
-    def test_optimize_context_node(self) -> None:
+    @pytest.mark.asyncio
+    async def test_optimize_context_node(self) -> None:
         from flexrag.graph.nodes import make_optimize_context_node
 
-        mock_optimizer = MagicMock()
+        mock_optimizer = AsyncMock()
         mock_optimizer.optimize.return_value = "optimized context"
         node = make_optimize_context_node(mock_optimizer, max_tokens=500)
         doc = Document(text="raw text", score=0.9)
@@ -381,7 +397,7 @@ class TestGraphNodes:
             "query": "query",
             "reranked_docs": [doc.model_dump()],
         }
-        result = node(state)
+        result = await node(state)
         assert result["optimized_context"] == "optimized context"
 
 
@@ -504,12 +520,14 @@ class TestFaissKnowledgeBuilder:
     # load_files                                                           #
     # ------------------------------------------------------------------ #
 
-    def test_load_files_empty_list_raises(self) -> None:
+    @pytest.mark.asyncio
+    async def test_load_files_empty_list_raises(self) -> None:
         builder = self._make_builder()
         with pytest.raises(ValueError, match="non-empty"):
-            builder.load_files([])
+            await builder.load_files([])
 
-    def test_load_files_from_directory(self, tmp_path: Any) -> None:
+    @pytest.mark.asyncio
+    async def test_load_files_from_directory(self, tmp_path: Any) -> None:
         """load_files() should call SimpleDirectoryReader and return count."""
         # Write a small .txt file
         (tmp_path / "doc.txt").write_text("Hello world", encoding="utf-8")
@@ -522,12 +540,13 @@ class TestFaissKnowledgeBuilder:
             mock_reader.load_data.return_value = [MagicMock(), MagicMock()]
             mock_reader_cls.return_value = mock_reader
 
-            count = builder.load_files(str(tmp_path))
+            count = await builder.load_files(str(tmp_path))
 
         assert count == 2
         mock_reader_cls.assert_called_once_with(input_dir=str(tmp_path))
 
-    def test_load_files_from_list(self, tmp_path: Any) -> None:
+    @pytest.mark.asyncio
+    async def test_load_files_from_list(self, tmp_path: Any) -> None:
         """load_files() should pass input_files= when given a list."""
         files = [str(tmp_path / "a.txt"), str(tmp_path / "b.md")]
         builder = self._make_builder()
@@ -539,7 +558,7 @@ class TestFaissKnowledgeBuilder:
             mock_reader.load_data.return_value = [MagicMock()]
             mock_reader_cls.return_value = mock_reader
 
-            count = builder.load_files(files)
+            count = await builder.load_files(files)
 
         assert count == 1
         mock_reader_cls.assert_called_once_with(input_files=files)
@@ -548,12 +567,14 @@ class TestFaissKnowledgeBuilder:
     # build_index                                                          #
     # ------------------------------------------------------------------ #
 
-    def test_build_index_raises_without_docs(self) -> None:
+    @pytest.mark.asyncio
+    async def test_build_index_raises_without_docs(self) -> None:
         builder = self._make_builder()
         with pytest.raises(RuntimeError, match="No documents loaded"):
-            builder.build_index()
+            await builder.build_index()
 
-    def test_build_index_creates_faiss_index(self) -> None:
+    @pytest.mark.asyncio
+    async def test_build_index_creates_faiss_index(self) -> None:
         """build_index() should produce a non-None _index and _vector_store."""
         import faiss  # type: ignore[import]
         from llama_index.core.schema import Document as LlamaDoc
@@ -577,7 +598,7 @@ class TestFaissKnowledgeBuilder:
             mock_sc.from_defaults.return_value = MagicMock()
             mock_vsi.return_value = MagicMock()
 
-            builder.build_index(chunk_size=128, chunk_overlap=16)
+            await builder.build_index(chunk_size=128, chunk_overlap=16)
 
         assert builder._index is not None
         assert builder._vector_store is not None
@@ -586,10 +607,11 @@ class TestFaissKnowledgeBuilder:
     # save                                                                 #
     # ------------------------------------------------------------------ #
 
-    def test_save_raises_when_index_not_built(self, tmp_path: Any) -> None:
+    @pytest.mark.asyncio
+    async def test_save_raises_when_index_not_built(self, tmp_path: Any) -> None:
         builder = self._make_builder()
         with pytest.raises(RuntimeError, match="not built"):
-            builder.save(str(tmp_path))
+            await builder.save(str(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -600,7 +622,8 @@ class TestFaissKnowledgeBuilder:
 class TestLlamaIndexRetrieverLoadIndex:
     """Tests for LlamaIndexRetriever.load_index()."""
 
-    def test_load_index_raises_when_file_missing(self, tmp_path: Any) -> None:
+    @pytest.mark.asyncio
+    async def test_load_index_raises_when_file_missing(self, tmp_path: Any) -> None:
         from flexrag.retrievers.llamaindex_retriever import LlamaIndexRetriever
 
         retriever = LlamaIndexRetriever(
@@ -609,4 +632,4 @@ class TestLlamaIndexRetrieverLoadIndex:
             embed_model_name="fake-embed",
         )
         with pytest.raises(FileNotFoundError):
-            retriever.load_index(str(tmp_path))
+            await retriever.load_index(str(tmp_path))

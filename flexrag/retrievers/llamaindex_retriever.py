@@ -15,9 +15,10 @@ Architecture overview::
     ┌─────────────────────────────────────────────┐
     │  LangGraph Node  (flexrag/graph/nodes.py)   │
     │                                             │
-    │  state.retrieved_docs = retriever.retrieve( │
-    │      state.query, cfg.top_k_retrieval       │
-    │  )                                          │
+    │  state.retrieved_docs = await               │
+    │      retriever.retrieve(                    │
+    │          state.query, cfg.top_k_retrieval   │
+    │      )                                      │
     └───────────────┬─────────────────────────────┘
                     │ calls
     ┌───────────────▼─────────────────────────────┐
@@ -30,6 +31,7 @@ Architecture overview::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any, List, Optional
@@ -67,6 +69,7 @@ class VLLMEmbedding(BaseEmbedding):
 
     # 非序列化的内部私有变量，需要用 PrivateAttr 声明
     _client: Any = PrivateAttr()
+    _aclient: Any = PrivateAttr()
     _endpoint: str = PrivateAttr()
 
     def __init__(
@@ -75,6 +78,7 @@ class VLLMEmbedding(BaseEmbedding):
         model: str,
         api_key: str | None = None,
         http_client: Any | None = None,
+        async_http_client: Any | None = None,
         **kwargs: Any,
     ) -> None:
         # 1. 初始化父类 (Pydantic BaseModel)
@@ -92,6 +96,7 @@ class VLLMEmbedding(BaseEmbedding):
         self._model = model
         self._api_key = api_key
         self._client = http_client or httpx.Client(timeout=60.0)
+        self._aclient = async_http_client or httpx.AsyncClient(timeout=60.0)
 
     # ------------------------------------------------------------------
     # 同步方法 (Synchronous Methods)
@@ -120,7 +125,7 @@ class VLLMEmbedding(BaseEmbedding):
         return [item["embedding"] for item in data]
 
     # ------------------------------------------------------------------
-    # 异步方法 (Asynchronous Methods - 解决当前报错)
+    # 异步方法 (Asynchronous Methods)
     # ------------------------------------------------------------------
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
@@ -213,7 +218,7 @@ class LlamaIndexRetriever(BaseRetriever):
     # Index loading
     # ------------------------------------------------------------------
 
-    def load_index(self, persist_dir: str) -> None:
+    async def load_index(self, persist_dir: str) -> None:
         """Restore a previously saved FAISS index from *persist_dir*.
 
         After this call :meth:`retrieve` is immediately usable.
@@ -235,13 +240,13 @@ class LlamaIndexRetriever(BaseRetriever):
                 "Build the knowledge base first with FaissKnowledgeBuilder."
             )
 
-        faiss_idx = faiss.read_index(faiss_path)
+        faiss_idx = await asyncio.to_thread(faiss.read_index, faiss_path)
         vector_store = FaissVectorStore(faiss_index=faiss_idx)
         storage_context = StorageContext.from_defaults(
             vector_store=vector_store,
             persist_dir=persist_dir,
         )
-        self._index = load_index_from_storage(storage_context)
+        self._index = await asyncio.to_thread(load_index_from_storage, storage_context)
         # Invalidate the cached retriever so it is rebuilt with the new index.
         self._llama_retriever = None
         logger.info(
@@ -277,7 +282,7 @@ class LlamaIndexRetriever(BaseRetriever):
     # BaseRetriever interface
     # ------------------------------------------------------------------
 
-    def retrieve(self, query: str, top_k: int) -> list[Document]:
+    async def retrieve(self, query: str, top_k: int) -> list[Document]:
         """Retrieve *top_k* documents relevant to *query*.
 
         Internally creates (or re-uses) a LlamaIndex
@@ -296,7 +301,9 @@ class LlamaIndexRetriever(BaseRetriever):
             self._llama_retriever = self._index.as_retriever(similarity_top_k=top_k)
 
         logger.debug("Retrieving top-%d docs for query: %r", top_k, query)
-        nodes: list[NodeWithScore] = self._llama_retriever.retrieve(query)
+        nodes: list[NodeWithScore] = await asyncio.to_thread(
+            self._llama_retriever.retrieve, query
+        )
 
         documents: list[Document] = []
         for node in nodes:
