@@ -7,7 +7,7 @@ to know which submodule each lives in.
 
 from flexrag.abstractions.base_context_optimizer import BaseContextOptimizer
 from flexrag.abstractions.base_generator import BaseGenerator
-from flexrag.abstractions.base_knowledge import BaseKnowledgeBase
+from flexrag.abstractions.base_knowledge import BaseKnowledgeBuilder
 from flexrag.abstractions.base_reranker import BaseReranker
 from flexrag.abstractions.base_retriever import BaseRetriever
 
@@ -16,5 +16,5 @@ __all__ = [
     "BaseReranker",
     "BaseContextOptimizer",
     "BaseGenerator",
-    "BaseKnowledgeBase",
+    "BaseKnowledgeBuilder",
 ]

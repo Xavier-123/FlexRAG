@@ -5,6 +5,11 @@ This module shows how to embed a LlamaIndex retriever inside a LangGraph node
 while keeping the two frameworks loosely coupled through the
 :class:`~flexrag.abstractions.BaseRetriever` strategy interface.
 
+The retriever is responsible for **loading a persisted index** (via
+:meth:`LlamaIndexRetriever.load_index`) and **querying** it.  Index
+*construction* is handled by
+:class:`~flexrag.knowledge.FaissKnowledgeBuilder`.
+
 Architecture overview::
 
     ┌─────────────────────────────────────────────┐
@@ -26,11 +31,16 @@ Architecture overview::
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, List, Optional
 from pydantic import PrivateAttr
 
 from llama_index.core import Settings as LlamaSettings
-from llama_index.core import VectorStoreIndex
+from llama_index.core import (
+    StorageContext,
+    VectorStoreIndex,
+    load_index_from_storage,
+)
 from llama_index.core.base.base_retriever import BaseRetriever as LlamaBaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode
 from llama_index.core.embeddings import BaseEmbedding
@@ -39,6 +49,9 @@ from flexrag.abstractions.base_retriever import BaseRetriever
 from flexrag.schema import Document
 
 logger = logging.getLogger(__name__)
+
+# File name used to locate the FAISS binary inside persist_dir
+_FAISS_FILE = "faiss_index.bin"
 
 
 class VLLMEmbedding(BaseEmbedding):
@@ -141,6 +154,14 @@ class LlamaIndexRetriever(BaseRetriever):
     strategy interface so that the LangGraph node code stays clean and
     framework-agnostic.
 
+    The retriever can be initialised in three ways:
+
+    1. **From a pre-built index** – pass a :class:`VectorStoreIndex` directly.
+    2. **From a persist directory** – call :meth:`load_index` with the path
+       where :class:`~flexrag.knowledge.FaissKnowledgeBuilder` saved the index.
+    3. **Empty (demo mode)** – pass ``index=None`` and use
+       :meth:`add_documents` to insert texts programmatically.
+
     Args:
         index: A pre-built :class:`~llama_index.core.VectorStoreIndex`.  Pass
             ``None`` to create an empty in-memory index (useful for testing).
@@ -150,16 +171,14 @@ class LlamaIndexRetriever(BaseRetriever):
 
     Example::
 
-        from llama_index.core import SimpleDirectoryReader, VectorStoreIndex
+        from flexrag.retrievers import LlamaIndexRetriever
 
-        documents = SimpleDirectoryReader("./data").load_data()
-        index = VectorStoreIndex.from_documents(documents)
         retriever = LlamaIndexRetriever(
-            index=index,
+            index=None,
             embed_base_url="http://localhost:8000",
             embed_model_name="BAAI/bge-large-en-v1.5",
-            embed_api_key="my-secret-key",
         )
+        retriever.load_index("./knowledge_base")
         docs = retriever.retrieve("What is RAG?", top_k=5)
     """
 
@@ -189,6 +208,47 @@ class LlamaIndexRetriever(BaseRetriever):
             self._index = index
 
         self._llama_retriever: LlamaBaseRetriever | None = None
+
+    # ------------------------------------------------------------------
+    # Index loading
+    # ------------------------------------------------------------------
+
+    def load_index(self, persist_dir: str) -> None:
+        """Restore a previously saved FAISS index from *persist_dir*.
+
+        After this call :meth:`retrieve` is immediately usable.
+
+        Args:
+            persist_dir: Path that was previously passed to
+                :meth:`~flexrag.knowledge.FaissKnowledgeBuilder.save`.
+
+        Raises:
+            FileNotFoundError: If the expected FAISS binary is missing.
+        """
+        import faiss  # type: ignore[import]
+        from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[import]
+
+        faiss_path = os.path.join(persist_dir, _FAISS_FILE)
+        if not os.path.isfile(faiss_path):
+            raise FileNotFoundError(
+                f"No FAISS index found at '{faiss_path}'. "
+                "Build the knowledge base first with FaissKnowledgeBuilder."
+            )
+
+        faiss_idx = faiss.read_index(faiss_path)
+        vector_store = FaissVectorStore(faiss_index=faiss_idx)
+        storage_context = StorageContext.from_defaults(
+            vector_store=vector_store,
+            persist_dir=persist_dir,
+        )
+        self._index = load_index_from_storage(storage_context)
+        # Invalidate the cached retriever so it is rebuilt with the new index.
+        self._llama_retriever = None
+        logger.info(
+            "Index loaded from '%s' (%d vector(s))",
+            persist_dir,
+            faiss_idx.ntotal,
+        )
 
     # ------------------------------------------------------------------
     # Public helpers

@@ -8,7 +8,7 @@ Start-up logic
 --------------
 1. Check whether a FAISS index already exists in ``KNOWLEDGE_PERSIST_DIR``
    (default: ``./knowledge_base``).
-2. If it **exists** → load automatically.
+2. If it **exists** → load automatically into a retriever.
 3. If it does **not** exist → offer two choices:
 
    * **Build** – point to a local directory of documents (``.txt`` / ``.md``
@@ -62,8 +62,9 @@ from flexrag import RAGPipeline
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
 from flexrag.generators.openai_generator import OpenAIGenerator
-from flexrag.knowledge import FaissKnowledgeBase
+from flexrag.knowledge import FaissKnowledgeBuilder
 from flexrag.rerankers.vllm_reranker import VLLMReranker
+from flexrag.retrievers import LlamaIndexRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -108,16 +109,17 @@ _DEMO_CORPUS = [
 # ---------------------------------------------------------------------------
 
 
-def _make_knowledge_base(settings: Settings) -> FaissKnowledgeBase:
-    """Create a :class:`FaissKnowledgeBase` wired to the configured embedding endpoint."""
-    return FaissKnowledgeBase(
+def _make_retriever(settings: Settings) -> LlamaIndexRetriever:
+    """Create a :class:`LlamaIndexRetriever` wired to the configured embedding endpoint."""
+    return LlamaIndexRetriever(
+        index=None,
         embed_base_url=settings.embedding_base_url,
         embed_model_name=settings.vllm_embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
 
 
-def build_knowledge_base(directory: str, settings: Settings) -> FaissKnowledgeBase:
+def build_knowledge_base(directory: str, settings: Settings) -> None:
     """Load files from *directory*, build the FAISS index, and save it.
 
     Args:
@@ -125,12 +127,13 @@ def build_knowledge_base(directory: str, settings: Settings) -> FaissKnowledgeBa
             or ``.pdf`` files.
         settings: Application settings (provides persist directory and chunk
             configuration).
-
-    Returns:
-        A ready-to-use :class:`FaissKnowledgeBase` instance.
     """
-    kb = _make_knowledge_base(settings)
-    count = kb.load_files(directory)
+    builder = FaissKnowledgeBuilder(
+        embed_base_url=settings.embedding_base_url,
+        embed_model_name=settings.vllm_embedding_model,
+        embed_api_key=settings.embedding_api_key,
+    )
+    count = builder.load_files(directory)
     print(f"  Loaded {count} file(s) from '{directory}'.")
 
     print(
@@ -138,29 +141,28 @@ def build_knowledge_base(directory: str, settings: Settings) -> FaissKnowledgeBa
         f"(chunk_size={settings.knowledge_chunk_size}, "
         f"chunk_overlap={settings.knowledge_chunk_overlap}) ..."
     )
-    kb.build_index(
+    builder.build_index(
         chunk_size=settings.knowledge_chunk_size,
         chunk_overlap=settings.knowledge_chunk_overlap,
     )
 
-    kb.save(settings.knowledge_persist_dir)
+    builder.save(settings.knowledge_persist_dir)
     print(f"  Knowledge base saved to '{settings.knowledge_persist_dir}'.")
-    return kb
 
 
-def load_knowledge_base(settings: Settings) -> FaissKnowledgeBase:
-    """Restore a previously built knowledge base from disk.
+def load_retriever(settings: Settings) -> LlamaIndexRetriever:
+    """Restore a previously built knowledge base from disk into a retriever.
 
     Args:
         settings: Application settings (provides persist directory and
             embedding configuration).
 
     Returns:
-        A ready-to-use :class:`FaissKnowledgeBase` instance.
+        A ready-to-use :class:`LlamaIndexRetriever` instance.
     """
-    kb = _make_knowledge_base(settings)
-    kb.load(settings.knowledge_persist_dir)
-    return kb
+    retriever = _make_retriever(settings)
+    retriever.load_index(settings.knowledge_persist_dir)
+    return retriever
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +170,7 @@ def load_knowledge_base(settings: Settings) -> FaissKnowledgeBase:
 # ---------------------------------------------------------------------------
 
 
-def _build_pipeline(retriever: FaissKnowledgeBase, settings: Settings) -> RAGPipeline:
+def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPipeline:
     """Wire up all pipeline components around *retriever*."""
     reranker = VLLMReranker(
         base_url=settings.reranker_base_url,
@@ -254,10 +256,10 @@ def main() -> None:
     # ------------------------------------------------------------------ #
     # 1. Check whether a persisted knowledge base already exists          #
     # ------------------------------------------------------------------ #
-    if FaissKnowledgeBase.index_exists(persist_dir):
+    if FaissKnowledgeBuilder.index_exists(persist_dir):
         print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
-        kb = load_knowledge_base(settings)
-        pipeline = _build_pipeline(kb, settings)
+        retriever = load_retriever(settings)
+        pipeline = _build_pipeline(retriever, settings)
 
     else:
         # ---------------------------------------------------------------- #
@@ -279,8 +281,9 @@ def main() -> None:
                 print("[ERROR] No directory specified. Exiting.")
                 sys.exit(1)
             print()
-            kb = build_knowledge_base(directory, settings)
-            pipeline = _build_pipeline(kb, settings)
+            build_knowledge_base(directory, settings)
+            retriever = load_retriever(settings)
+            pipeline = _build_pipeline(retriever, settings)
 
         elif choice == "d":
             print("[INFO] Indexing demo corpus ...")
