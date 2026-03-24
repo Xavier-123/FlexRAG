@@ -32,7 +32,7 @@ _SYSTEM_PROMPT = (
 _SYSTEM_PROMPT_ZH = '''你是一个严谨的基于事实的问答助手。请严格遵循以下规则：
 严禁脱稿：仅使用提供的上下文（Context）信息回答问题，绝不能使用外部知识或自行推测。
 诚实作答：如果上下文信息不足以回答该问题，请直接回答‘抱歉，提供的上下文中没有足够的信息’。
-提供证据：务必在 evidence 字段中，一字不差地引用支持你回答的原文段落。'''
+提供证据：务必在 evidence 字段中，evidence 必须是 list，一字不差地引用支持你回答的原文段落。'''
 
 
 class OpenAIGenerator(BaseGenerator):
@@ -126,8 +126,8 @@ class OpenAIGenerator(BaseGenerator):
                     HumanMessage(content=human_prompt),
                 ]
             )
-        except Exception:
-            logger.exception("OpenAI generator failed")
+        except Exception as e:
+            logger.exception(f"OpenAI generator failed. \n  {e}")
             raise
 
         # Safety net: if model returns no evidence fall back to source docs

@@ -27,9 +27,9 @@ so your documents are always ready to query.
 ## Architecture
 
 ```
-                ┌─────────────────────────────────┐
+                ┌──────────────────────────────────┐
                 │   Knowledge Base Pipeline        │
-                │                                 │
+                │                                  │
                 │  load_files()  ──►  build_index()│
                 │       │                   │      │
                 │  .txt/.md/.pdf    FAISS + vLLM   │
@@ -43,15 +43,15 @@ so your documents are always ready to query.
                               docstore.json  + ...
 
                 ┌─────────────────────────────────┐
-                │   RAG Query Pipeline             │
+                │   RAG Query Pipeline            │
                 │                                 │
   User query ──►│  [Retrieve]  LlamaIndex FAISS   │
                 │       │                         │
-                │  [Rerank]    vLLM cross-encoder  │
+                │  [Rerank]    vLLM cross-encoder │
                 │       │                         │
-                │  [Optimise]  LLM context filter  │
+                │  [Optimise]  LLM context filter │
                 │       │                         │
-                │  [Generate]  LLM structured out  │
+                │  [Generate]  LLM structured out │
                 └───────┬─────────────────────────┘
                         │
                     RAGOutput
