@@ -1,10 +1,10 @@
 """
 Knowledge base sub-package.
 
-Exposes the FAISS-backed knowledge base implementation that is used by
+Exposes the FAISS-backed knowledge builder implementation that is used by
 default when ``main.py`` is invoked.
 """
 
-from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBase
+from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBuilder
 
-__all__ = ["FaissKnowledgeBase"]
+__all__ = ["FaissKnowledgeBuilder"]

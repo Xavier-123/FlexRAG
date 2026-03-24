@@ -413,65 +413,36 @@ class TestSettingsKnowledge:
 
 
 # ---------------------------------------------------------------------------
-# BaseKnowledgeBase – abstract interface enforcement
+# BaseKnowledgeBuilder – abstract interface enforcement
 # ---------------------------------------------------------------------------
 
 
-class TestBaseKnowledgeBase:
+class TestBaseKnowledgeBuilder:
     def test_cannot_instantiate_directly(self) -> None:
-        """BaseKnowledgeBase must not be directly instantiatable."""
-        from flexrag.abstractions.base_knowledge import BaseKnowledgeBase
+        """BaseKnowledgeBuilder must not be directly instantiatable."""
+        from flexrag.abstractions.base_knowledge import BaseKnowledgeBuilder
 
         with pytest.raises(TypeError):
-            BaseKnowledgeBase()  # type: ignore[abstract]
+            BaseKnowledgeBuilder()  # type: ignore[abstract]
 
     def test_concrete_subclass_must_implement_all_methods(self) -> None:
         """A partial subclass that omits abstract methods must raise TypeError."""
-        from flexrag.abstractions.base_knowledge import BaseKnowledgeBase
+        from flexrag.abstractions.base_knowledge import BaseKnowledgeBuilder
 
-        class Partial(BaseKnowledgeBase):
+        class Partial(BaseKnowledgeBuilder):
             pass  # implements nothing
 
         with pytest.raises(TypeError):
             Partial()  # type: ignore[abstract]
 
-    def test_add_documents_default_raises(self) -> None:
-        """Default add_documents() raises NotImplementedError."""
-        from flexrag.abstractions.base_knowledge import BaseKnowledgeBase
-        from flexrag.schema import Document
-
-        class Minimal(BaseKnowledgeBase):
-            def load_files(self, path):
-                return 0
-
-            def build_index(self, chunk_size=512, chunk_overlap=50):
-                pass
-
-            def save(self, persist_dir):
-                pass
-
-            def load(self, persist_dir):
-                pass
-
-            @classmethod
-            def index_exists(cls, persist_dir):
-                return False
-
-            def retrieve(self, query, top_k=5):
-                return []
-
-        inst = Minimal()
-        with pytest.raises(NotImplementedError):
-            inst.add_documents(["text"])
-
 
 # ---------------------------------------------------------------------------
-# FaissKnowledgeBase (stub embedding + FAISS)
+# FaissKnowledgeBuilder (stub embedding + FAISS)
 # ---------------------------------------------------------------------------
 
 
-class TestFaissKnowledgeBase:
-    """Tests for FaissKnowledgeBase using a fully mocked embedding model."""
+class TestFaissKnowledgeBuilder:
+    """Tests for FaissKnowledgeBuilder using a fully mocked embedding model."""
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
@@ -486,16 +457,16 @@ class TestFaissKnowledgeBase:
         mock_embed.get_text_embedding_batch.return_value = [[0.1] * dim]
         return mock_embed
 
-    def _make_kb(
+    def _make_builder(
         self,
         embed_mock: Any | None = None,
         dim: int = 4,
     ) -> Any:
-        """Create a FaissKnowledgeBase with injected mocks."""
-        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBase
+        """Create a FaissKnowledgeBuilder with injected mocks."""
+        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBuilder
 
         mock_http = MagicMock()
-        # The HTTP response for the embedding probe used in build_index / add_documents
+        # The HTTP response for the embedding probe used in build_index
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
         mock_resp.json.return_value = {
@@ -503,47 +474,47 @@ class TestFaissKnowledgeBase:
         }
         mock_http.post.return_value = mock_resp
 
-        kb = FaissKnowledgeBase(
+        builder = FaissKnowledgeBuilder(
             embed_base_url="http://fake/v1/embeddings",
             embed_model_name="fake-embed",
             embed_api_key=None,
             http_client=mock_http,
         )
-        # Replace the embed model with our mock so retrieve() works without HTTP
+        # Replace the embed model with our mock so tests work without HTTP
         if embed_mock is not None:
-            kb._embed_model = embed_mock
-        return kb
+            builder._embed_model = embed_mock
+        return builder
 
     # ------------------------------------------------------------------ #
     # index_exists                                                         #
     # ------------------------------------------------------------------ #
 
     def test_index_exists_false_when_no_file(self, tmp_path: Any) -> None:
-        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBase
+        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBuilder
 
-        assert FaissKnowledgeBase.index_exists(str(tmp_path)) is False
+        assert FaissKnowledgeBuilder.index_exists(str(tmp_path)) is False
 
     def test_index_exists_true_when_file_present(self, tmp_path: Any) -> None:
-        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBase
+        from flexrag.knowledge.faiss_knowledge import FaissKnowledgeBuilder
 
         (tmp_path / "faiss_index.bin").touch()
-        assert FaissKnowledgeBase.index_exists(str(tmp_path)) is True
+        assert FaissKnowledgeBuilder.index_exists(str(tmp_path)) is True
 
     # ------------------------------------------------------------------ #
     # load_files                                                           #
     # ------------------------------------------------------------------ #
 
     def test_load_files_empty_list_raises(self) -> None:
-        kb = self._make_kb()
+        builder = self._make_builder()
         with pytest.raises(ValueError, match="non-empty"):
-            kb.load_files([])
+            builder.load_files([])
 
     def test_load_files_from_directory(self, tmp_path: Any) -> None:
         """load_files() should call SimpleDirectoryReader and return count."""
         # Write a small .txt file
         (tmp_path / "doc.txt").write_text("Hello world", encoding="utf-8")
 
-        kb = self._make_kb()
+        builder = self._make_builder()
         with patch(
             "flexrag.knowledge.faiss_knowledge.SimpleDirectoryReader"
         ) as mock_reader_cls:
@@ -551,7 +522,7 @@ class TestFaissKnowledgeBase:
             mock_reader.load_data.return_value = [MagicMock(), MagicMock()]
             mock_reader_cls.return_value = mock_reader
 
-            count = kb.load_files(str(tmp_path))
+            count = builder.load_files(str(tmp_path))
 
         assert count == 2
         mock_reader_cls.assert_called_once_with(input_dir=str(tmp_path))
@@ -559,7 +530,7 @@ class TestFaissKnowledgeBase:
     def test_load_files_from_list(self, tmp_path: Any) -> None:
         """load_files() should pass input_files= when given a list."""
         files = [str(tmp_path / "a.txt"), str(tmp_path / "b.md")]
-        kb = self._make_kb()
+        builder = self._make_builder()
 
         with patch(
             "flexrag.knowledge.faiss_knowledge.SimpleDirectoryReader"
@@ -568,7 +539,7 @@ class TestFaissKnowledgeBase:
             mock_reader.load_data.return_value = [MagicMock()]
             mock_reader_cls.return_value = mock_reader
 
-            count = kb.load_files(files)
+            count = builder.load_files(files)
 
         assert count == 1
         mock_reader_cls.assert_called_once_with(input_files=files)
@@ -578,18 +549,18 @@ class TestFaissKnowledgeBase:
     # ------------------------------------------------------------------ #
 
     def test_build_index_raises_without_docs(self) -> None:
-        kb = self._make_kb()
+        builder = self._make_builder()
         with pytest.raises(RuntimeError, match="No documents loaded"):
-            kb.build_index()
+            builder.build_index()
 
     def test_build_index_creates_faiss_index(self) -> None:
         """build_index() should produce a non-None _index and _vector_store."""
         import faiss  # type: ignore[import]
         from llama_index.core.schema import Document as LlamaDoc
 
-        kb = self._make_kb(dim=4)
+        builder = self._make_builder(dim=4)
         # Inject a minimal LlamaIndex Document as raw doc
-        kb._raw_docs = [LlamaDoc(text="some content about RAG")]
+        builder._raw_docs = [LlamaDoc(text="some content about RAG")]
 
         with (
             patch("flexrag.knowledge.faiss_knowledge.SentenceSplitter") as mock_split,
@@ -606,84 +577,36 @@ class TestFaissKnowledgeBase:
             mock_sc.from_defaults.return_value = MagicMock()
             mock_vsi.return_value = MagicMock()
 
-            kb.build_index(chunk_size=128, chunk_overlap=16)
+            builder.build_index(chunk_size=128, chunk_overlap=16)
 
-        assert kb._index is not None
-        assert kb._vector_store is not None
+        assert builder._index is not None
+        assert builder._vector_store is not None
 
     # ------------------------------------------------------------------ #
-    # save / load                                                          #
+    # save                                                                 #
     # ------------------------------------------------------------------ #
 
     def test_save_raises_when_index_not_built(self, tmp_path: Any) -> None:
-        kb = self._make_kb()
+        builder = self._make_builder()
         with pytest.raises(RuntimeError, match="not built"):
-            kb.save(str(tmp_path))
+            builder.save(str(tmp_path))
 
-    def test_load_raises_when_file_missing(self, tmp_path: Any) -> None:
-        kb = self._make_kb()
+
+# ---------------------------------------------------------------------------
+# LlamaIndexRetriever – load_index
+# ---------------------------------------------------------------------------
+
+
+class TestLlamaIndexRetrieverLoadIndex:
+    """Tests for LlamaIndexRetriever.load_index()."""
+
+    def test_load_index_raises_when_file_missing(self, tmp_path: Any) -> None:
+        from flexrag.retrievers.llamaindex_retriever import LlamaIndexRetriever
+
+        retriever = LlamaIndexRetriever(
+            index=None,
+            embed_base_url="http://fake",
+            embed_model_name="fake-embed",
+        )
         with pytest.raises(FileNotFoundError):
-            kb.load(str(tmp_path))
-
-    # ------------------------------------------------------------------ #
-    # retrieve                                                             #
-    # ------------------------------------------------------------------ #
-
-    def test_retrieve_raises_when_no_index(self) -> None:
-        kb = self._make_kb()
-        with pytest.raises(RuntimeError, match="not available"):
-            kb.retrieve("test query")
-
-    def test_retrieve_returns_documents(self) -> None:
-        """retrieve() must convert LlamaIndex NodeWithScore objects to Documents."""
-        from llama_index.core.schema import NodeWithScore, TextNode
-
-        kb = self._make_kb()
-        mock_index = MagicMock()
-        mock_retriever = MagicMock()
-        mock_index.as_retriever.return_value = mock_retriever
-
-        node = NodeWithScore(node=TextNode(text="chunk text", metadata={"src": "x"}), score=0.8)
-        mock_retriever.retrieve.return_value = [node]
-        kb._index = mock_index
-
-        docs = kb.retrieve("What is RAG?", top_k=3)
-
-        assert len(docs) == 1
-        assert docs[0].text == "chunk text"
-        assert docs[0].score == pytest.approx(0.8)
-        assert docs[0].metadata == {"src": "x"}
-        mock_index.as_retriever.assert_called_once_with(similarity_top_k=3)
-
-    # ------------------------------------------------------------------ #
-    # add_documents                                                        #
-    # ------------------------------------------------------------------ #
-
-    def test_add_documents_bootstraps_index(self) -> None:
-        """add_documents() must work even when no index exists yet."""
-        kb = self._make_kb(dim=4)
-
-        with (
-            patch("flexrag.knowledge.faiss_knowledge.FaissVectorStore") as mock_fvs,
-            patch("flexrag.knowledge.faiss_knowledge.VectorStoreIndex") as mock_vsi,
-            patch("flexrag.knowledge.faiss_knowledge.StorageContext") as mock_sc,
-            patch("flexrag.knowledge.faiss_knowledge.faiss") as mock_faiss,
-        ):
-            mock_faiss.IndexFlatL2.return_value = MagicMock()
-            mock_fvs.return_value = MagicMock()
-            mock_sc.from_defaults.return_value = MagicMock()
-            mock_vsi.return_value = MagicMock()
-
-            kb.add_documents(["doc one", "doc two"], [{"k": "v"}, {}])
-
-        assert kb._index is not None
-
-    def test_add_documents_inserts_into_existing_index(self) -> None:
-        """add_documents() must call insert_nodes when index already exists."""
-        kb = self._make_kb(dim=4)
-        mock_index = MagicMock()
-        kb._index = mock_index
-
-        kb.add_documents(["extra doc"])
-
-        mock_index.insert_nodes.assert_called_once()
+            retriever.load_index(str(tmp_path))

@@ -1,35 +1,31 @@
 """
-FAISS-backed knowledge base implementation.
+FAISS-backed knowledge builder implementation.
 
-Implements the full knowledge base pipeline using:
+Implements the knowledge base *construction* pipeline using:
 
 * **LlamaIndex** ``SimpleDirectoryReader`` for file loading (.txt / .md / .pdf)
 * **LlamaIndex** ``SentenceSplitter`` for configurable text chunking
 * **LlamaIndex** ``VectorStoreIndex`` + ``FaissVectorStore`` for vector storage
 * The project's own ``VLLMEmbedding`` for embedding generation
 
+This module is responsible only for **building and persisting** a FAISS index.
+Retrieval from a persisted index is handled by
+:class:`~flexrag.retrievers.LlamaIndexRetriever`.
+
 Usage example::
 
-    from flexrag.knowledge import FaissKnowledgeBase
+    from flexrag.knowledge import FaissKnowledgeBuilder
 
-    kb = FaissKnowledgeBase(
+    builder = FaissKnowledgeBuilder(
         embed_base_url="http://localhost:8001/v1/embeddings",
         embed_model_name="BAAI/bge-large-en-v1.5",
         embed_api_key="sk-...",
     )
 
     # Build from a directory of documents
-    kb.load_files("./my_docs")
-    kb.build_index(chunk_size=512, chunk_overlap=50)
-    kb.save("./knowledge_base")
-
-    # Later – restore without rebuilding
-    kb2 = FaissKnowledgeBase(
-        embed_base_url="http://localhost:8001/v1/embeddings",
-        embed_model_name="BAAI/bge-large-en-v1.5",
-    )
-    kb2.load("./knowledge_base")
-    docs = kb2.retrieve("What is RAG?", top_k=5)
+    builder.load_files("./my_docs")
+    builder.build_index(chunk_size=512, chunk_overlap=50)
+    builder.save("./knowledge_base")
 """
 
 from __future__ import annotations
@@ -44,15 +40,12 @@ from llama_index.core import (
     SimpleDirectoryReader,
     StorageContext,
     VectorStoreIndex,
-    load_index_from_storage,
 )
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.schema import TextNode
 from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[import]
 
-from flexrag.abstractions.base_knowledge import BaseKnowledgeBase
+from flexrag.abstractions.base_knowledge import BaseKnowledgeBuilder
 from flexrag.retrievers.llamaindex_retriever import VLLMEmbedding
-from flexrag.schema import Document
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +55,15 @@ _FAISS_FILE = "faiss_index.bin"
 _PROBE_TEXT = "dimension probe"
 
 
-class FaissKnowledgeBase(BaseKnowledgeBase):
-    """Knowledge base that stores vectors in a local FAISS index.
+class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
+    """Knowledge builder that stores vectors in a local FAISS index.
 
     This class bridges the LlamaIndex ecosystem with FlexRAG's
-    :class:`~flexrag.abstractions.BaseKnowledgeBase` strategy interface.
+    :class:`~flexrag.abstractions.BaseKnowledgeBuilder` strategy interface.
+
+    It is responsible only for *building and persisting* the index.
+    For retrieval, use :class:`~flexrag.retrievers.LlamaIndexRetriever`
+    with :meth:`~flexrag.retrievers.LlamaIndexRetriever.load_index`.
 
     Args:
         embed_base_url: Base URL of the vLLM embedding endpoint
@@ -96,7 +93,7 @@ class FaissKnowledgeBase(BaseKnowledgeBase):
         # Raw LlamaIndex Document objects populated by load_files()
         self._raw_docs: list[Any] = []
 
-        # Built by build_index() / load()
+        # Built by build_index()
         self._index: VectorStoreIndex | None = None
         self._vector_store: Any | None = None  # FaissVectorStore
 
@@ -160,7 +157,7 @@ class FaissKnowledgeBase(BaseKnowledgeBase):
         """
         if not self._raw_docs:
             raise RuntimeError(
-                "No documents loaded. Call load_files() or add_documents() first."
+                "No documents loaded. Call load_files() first."
             )
 
         # -- Chunk --
@@ -218,35 +215,6 @@ class FaissKnowledgeBase(BaseKnowledgeBase):
 
         logger.info("Knowledge base saved to '%s'", persist_dir)
 
-    def load(self, persist_dir: str) -> None:
-        """Restore a previously saved knowledge base from *persist_dir*.
-
-        Args:
-            persist_dir: Path previously passed to :meth:`save`.
-
-        Raises:
-            FileNotFoundError: If the expected FAISS binary is missing.
-        """
-        faiss_path = os.path.join(persist_dir, _FAISS_FILE)
-        if not os.path.isfile(faiss_path):
-            raise FileNotFoundError(
-                f"No FAISS index found at '{faiss_path}'. "
-                "Build the knowledge base first with build_index() + save()."
-            )
-
-        faiss_idx = faiss.read_index(faiss_path)
-        self._vector_store = FaissVectorStore(faiss_index=faiss_idx)
-        storage_context = StorageContext.from_defaults(
-            vector_store=self._vector_store,
-            persist_dir=persist_dir,
-        )
-        self._index = load_index_from_storage(storage_context)
-        logger.info(
-            "Knowledge base loaded from '%s' (%d vector(s))",
-            persist_dir,
-            faiss_idx.ntotal,
-        )
-
     @classmethod
     def index_exists(cls, persist_dir: str) -> bool:
         """Return ``True`` if a FAISS binary exists at *persist_dir*.
@@ -257,77 +225,3 @@ class FaissKnowledgeBase(BaseKnowledgeBase):
             persist_dir: Directory to inspect.
         """
         return os.path.isfile(os.path.join(persist_dir, _FAISS_FILE))
-
-    # ------------------------------------------------------------------
-    # Retrieval
-    # ------------------------------------------------------------------
-
-    def retrieve(self, query: str, top_k: int = 5) -> list[Document]:
-        """Return the *top_k* most relevant chunks for *query*.
-
-        Args:
-            query: Free-text search string.
-            top_k: Maximum number of results (default 5).
-
-        Returns:
-            List of :class:`~flexrag.schema.Document` sorted by descending score.
-
-        Raises:
-            RuntimeError: If the index has not been built or loaded.
-        """
-        if self._index is None:
-            raise RuntimeError(
-                "Index is not available. "
-                "Call build_index() or load() before retrieve()."
-            )
-
-        retriever = self._index.as_retriever(similarity_top_k=top_k)
-        nodes = retriever.retrieve(query)
-
-        documents: list[Document] = []
-        for node in nodes:
-            documents.append(
-                Document(
-                    text=node.get_content(),
-                    score=node.score or 0.0,
-                    metadata=node.metadata,
-                )
-            )
-        logger.debug("Retrieved %d document(s) for query: %r", len(documents), query)
-        return documents
-
-    # ------------------------------------------------------------------
-    # Optional: programmatic insertion
-    # ------------------------------------------------------------------
-
-    def add_documents(
-        self,
-        texts: list[str],
-        metadatas: list[dict[str, Any]] | None = None,
-    ) -> None:
-        """Insert raw text chunks directly into the live index.
-
-        Useful for adding documents programmatically without going through
-        file loading.  If :meth:`build_index` has not been called yet, a
-        minimal in-memory FAISS index is created automatically.
-
-        Args:
-            texts: Raw text strings to insert.
-            metadatas: Optional metadata dicts aligned with *texts*.
-        """
-        metadatas = metadatas or [{}] * len(texts)
-        nodes = [TextNode(text=t, metadata=m) for t, m in zip(texts, metadatas)]
-
-        if self._index is None:
-            # Bootstrap a FAISS index on first insertion
-            embed_dim = self._detect_embedding_dim()
-            faiss_idx = faiss.IndexFlatL2(embed_dim)
-            self._vector_store = FaissVectorStore(faiss_index=faiss_idx)
-            storage_context = StorageContext.from_defaults(
-                vector_store=self._vector_store
-            )
-            self._index = VectorStoreIndex(nodes, storage_context=storage_context)
-        else:
-            self._index.insert_nodes(nodes)
-
-        logger.info("Inserted %d document(s) into FAISS index", len(texts))

@@ -76,10 +76,10 @@ FlexRAG/
     │   ├── base_reranker.py
     │   ├── base_context_optimizer.py
     │   ├── base_generator.py
-    │   └── base_knowledge.py           ← knowledge base ABC (NEW)
-    ├── knowledge/                       ← knowledge base package (NEW)
+    │   └── base_knowledge.py           ← knowledge builder ABC
+    ├── knowledge/                       ← knowledge builder package
     │   ├── __init__.py
-    │   └── faiss_knowledge.py          ← FAISS + LlamaIndex implementation
+    │   └── faiss_knowledge.py          ← FAISS + LlamaIndex builder
     ├── retrievers/
     │   └── llamaindex_retriever.py      # LlamaIndex VectorStoreIndex + vLLM
     ├── rerankers/
@@ -168,27 +168,27 @@ CONTEXT_MAX_TOKENS=3000
 
 ```python
 from flexrag.config import Settings
-from flexrag.knowledge import FaissKnowledgeBase
+from flexrag.knowledge import FaissKnowledgeBuilder
 
 settings = Settings()
 
-kb = FaissKnowledgeBase(
+builder = FaissKnowledgeBuilder(
     embed_base_url=settings.embedding_base_url,
     embed_model_name=settings.vllm_embedding_model,
     embed_api_key=settings.embedding_api_key,
 )
 
 # Load all .txt / .md / .pdf files from a directory
-kb.load_files("./my_documents")
+builder.load_files("./my_documents")
 
 # Chunk and embed (uses settings for chunk_size / chunk_overlap)
-kb.build_index(
+builder.build_index(
     chunk_size=settings.knowledge_chunk_size,
     chunk_overlap=settings.knowledge_chunk_overlap,
 )
 
 # Persist to disk
-kb.save(settings.knowledge_persist_dir)
+builder.save(settings.knowledge_persist_dir)
 print("Knowledge base built and saved.")
 ```
 
@@ -198,22 +198,23 @@ print("Knowledge base built and saved.")
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
 from flexrag.generators.openai_generator import OpenAIGenerator
-from flexrag.knowledge import FaissKnowledgeBase
 from flexrag.pipeline import RAGPipeline
 from flexrag.rerankers.vllm_reranker import VLLMReranker
+from flexrag.retrievers import LlamaIndexRetriever
 from langchain_openai import ChatOpenAI
 
 settings = Settings()
 
-# Restore knowledge base from disk
-kb = FaissKnowledgeBase(
+# Load persisted index into a retriever
+retriever = LlamaIndexRetriever(
+    index=None,
     embed_base_url=settings.embedding_base_url,
     embed_model_name=settings.vllm_embedding_model,
     embed_api_key=settings.embedding_api_key,
 )
-kb.load(settings.knowledge_persist_dir)
+retriever.load_index(settings.knowledge_persist_dir)
 
-# Build the full pipeline with the knowledge base as the retriever
+# Build the full pipeline with the retriever
 reranker = VLLMReranker(
     base_url=settings.reranker_base_url,
     model=settings.vllm_reranker_model,
@@ -226,7 +227,7 @@ llm = ChatOpenAI(
     temperature=0.0,
 )
 pipeline = RAGPipeline(
-    retriever=kb,
+    retriever=retriever,
     reranker=reranker,
     context_optimizer=LLMContextOptimizer(llm=llm),
     generator=OpenAIGenerator(
@@ -287,9 +288,8 @@ class MyReranker(BaseReranker):
         return sorted(documents, key=lambda d: len(d.text), reverse=True)[:top_k]
 ```
 
-Similarly, to build a custom knowledge backend subclass `BaseKnowledgeBase`
-and implement `load_files`, `build_index`, `save`, `load`, `index_exists`,
-and `retrieve`.
+Similarly, to build a custom knowledge backend subclass `BaseKnowledgeBuilder`
+and implement `load_files`, `build_index`, `save`, and `index_exists`.
 
 ---
 
