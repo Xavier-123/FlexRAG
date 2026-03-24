@@ -1,0 +1,180 @@
+"""
+High-level RAG pipeline entry point.
+
+:class:`RAGPipeline` wires together all components, builds the LangGraph
+graph, and exposes a single :meth:`~RAGPipeline.run` method for end-users.
+
+Typical usage::
+
+    from flexrag import RAGPipeline
+    from flexrag.config import Settings
+
+    cfg = Settings()
+    pipeline = RAGPipeline.from_settings(cfg)
+    pipeline.add_documents(["RAG is ...", "LangGraph is ..."])
+    output = pipeline.run("What is RAG?")
+    print(output.answer)
+    print(output.evidence)
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from langchain_openai import ChatOpenAI
+
+from flexrag.config import Settings
+from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.generators.openai_generator import OpenAIGenerator
+from flexrag.graph.builder import build_rag_graph
+from flexrag.rerankers.vllm_reranker import VLLMReranker
+from flexrag.retrievers.llamaindex_retriever import LlamaIndexRetriever
+from flexrag.schema import RAGOutput
+
+logger = logging.getLogger(__name__)
+
+
+class RAGPipeline:
+    """End-to-end modular RAG pipeline.
+
+    Orchestrates the full retrieval-augmented generation workflow:
+
+    1. **Retrieve** – find relevant document chunks via LlamaIndex.
+    2. **Rerank** – score candidates with a vLLM cross-encoder.
+    3. **Optimize Context** – extract key passages using GPT-4o.
+    4. **Generate** – produce a structured answer with OpenAI Structured Output.
+
+    All components are decoupled through abstract base classes (strategy
+    pattern) so they can be swapped individually.
+
+    Args:
+        retriever: :class:`~flexrag.retrievers.LlamaIndexRetriever` instance.
+        reranker: :class:`~flexrag.rerankers.VLLMReranker` instance.
+        context_optimizer: :class:`~flexrag.context_optimizers.LLMContextOptimizer`.        generator: :class:`~flexrag.generators.OpenAIGenerator` instance.
+        settings: :class:`~flexrag.config.Settings` driving numeric hyper-params.
+
+    See Also:
+        :meth:`from_settings` – convenience factory that reads everything from
+        environment variables / a ``.env`` file.
+    """
+
+    def __init__(
+        self,
+        retriever: LlamaIndexRetriever,
+        reranker: VLLMReranker,
+        context_optimizer: LLMContextOptimizer,
+        generator: OpenAIGenerator,
+        settings: Settings,
+    ) -> None:
+        self._retriever = retriever
+        self._settings = settings
+
+        self._graph = build_rag_graph(
+            retriever=retriever,
+            reranker=reranker,
+            context_optimizer=context_optimizer,
+            generator=generator,
+            top_k_retrieval=settings.top_k_retrieval,
+            top_k_rerank=settings.top_k_rerank,
+            context_max_tokens=settings.context_max_tokens,
+        )
+
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_settings(cls, settings: Settings | None = None) -> "RAGPipeline":
+        """Construct a :class:`RAGPipeline` from :class:`~flexrag.config.Settings`.
+
+        All components are built using the values in *settings* (which default
+        to environment variables / ``.env`` file).
+
+        Args:
+            settings: Optional pre-built settings object.  When ``None`` a
+                new :class:`~flexrag.config.Settings` instance is created,
+                reading from the environment.
+
+        Returns:
+            A fully initialised :class:`RAGPipeline`.
+        """
+        if settings is None:
+            settings = Settings()
+
+        # -- Retriever (LlamaIndex + vLLM embeddings) --
+        retriever = LlamaIndexRetriever(
+            index=None,
+            embed_base_url=settings.vllm_base_url,
+            embed_model_name=settings.vllm_embedding_model,
+        )
+
+        # -- Reranker (vLLM cross-encoder) --
+        reranker = VLLMReranker(
+            base_url=settings.vllm_base_url,
+            model=settings.vllm_reranker_model,
+        )
+
+        # -- Context Optimiser (GPT-4o via LangChain) --
+        llm = ChatOpenAI(
+            model=settings.openai_model,
+            api_key=settings.openai_api_key,  # type: ignore[arg-type]
+            temperature=0.0,
+        )
+        context_optimizer = LLMContextOptimizer(llm=llm)
+
+        # -- Generator (GPT-4o Structured Output) --
+        generator = OpenAIGenerator(
+            model=settings.openai_model,
+            api_key=settings.openai_api_key,
+        )
+
+        return cls(
+            retriever=retriever,
+            reranker=reranker,
+            context_optimizer=context_optimizer,
+            generator=generator,
+            settings=settings,
+        )
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def add_documents(
+        self,
+        texts: list[str],
+        metadatas: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Index a list of text chunks so they can be retrieved later.
+
+        Args:
+            texts: Raw text chunks to add to the retriever's index.
+            metadatas: Optional metadata dicts aligned with *texts*.
+        """
+        self._retriever.add_documents(texts, metadatas=metadatas)
+        logger.info("Indexed %d document(s)", len(texts))
+
+    def run(self, query: str) -> RAGOutput:
+        """Execute the full RAG pipeline for *query*.
+
+        Args:
+            query: The user's question.
+
+        Returns:
+            A :class:`~flexrag.schema.RAGOutput` containing ``answer`` and
+            ``evidence``.
+
+        Raises:
+            RuntimeError: If any pipeline node reports an unrecoverable error.
+        """
+        logger.info("Pipeline started – query: %r", query)
+        result: dict[str, Any] = self._graph.invoke({"query": query})
+
+        if error := result.get("error"):
+            raise RuntimeError(f"RAG pipeline error: {error}")
+
+        return RAGOutput(
+            answer=result.get("answer", ""),
+            evidence=result.get("evidence", []),
+        )
