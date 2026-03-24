@@ -49,6 +49,8 @@ class VLLMEmbedding:
     Args:
         base_url: Base URL of the vLLM server (e.g. ``"http://localhost:8000"``).
         model: Name of the embedding model to use.
+        api_key: Optional API key sent as ``Authorization: Bearer <api_key>``
+            for servers that require authentication.
         http_client: Optional pre-built ``httpx.Client`` (useful for testing).
     """
 
@@ -56,12 +58,14 @@ class VLLMEmbedding:
         self,
         base_url: str,
         model: str,
+        api_key: str | None = None,
         http_client: Any | None = None,
     ) -> None:
         import httpx
 
         self._endpoint = base_url.rstrip("/") + "/v1/embeddings"
         self._model = model
+        self._api_key = api_key
         self._client = http_client or httpx.Client(timeout=60.0)
 
     # ------------------------------------------------------------------
@@ -92,7 +96,10 @@ class VLLMEmbedding:
             A list of embedding vectors (one per input string).
         """
         payload = {"model": self._model, "input": texts}
-        response = self._client.post(self._endpoint, json=payload)
+        headers: dict[str, str] = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        response = self._client.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()["data"]
         # Sort by index to preserve order (OpenAI spec)
@@ -112,6 +119,7 @@ class LlamaIndexRetriever(BaseRetriever):
             ``None`` to create an empty in-memory index (useful for testing).
         embed_base_url: Base URL of the vLLM embedding endpoint.
         embed_model_name: Name of the embedding model served at that URL.
+        embed_api_key: Optional API key for the vLLM embedding endpoint.
 
     Example::
 
@@ -123,6 +131,7 @@ class LlamaIndexRetriever(BaseRetriever):
             index=index,
             embed_base_url="http://localhost:8000",
             embed_model_name="BAAI/bge-large-en-v1.5",
+            embed_api_key="my-secret-key",
         )
         docs = retriever.retrieve("What is RAG?", top_k=5)
     """
@@ -132,10 +141,12 @@ class LlamaIndexRetriever(BaseRetriever):
         index: VectorStoreIndex | None,
         embed_base_url: str,
         embed_model_name: str,
+        embed_api_key: str | None = None,
     ) -> None:
         self._embed_model = VLLMEmbedding(
             base_url=embed_base_url,
             model=embed_model_name,
+            api_key=embed_api_key,
         )
         # Inject our custom embedding into the global LlamaIndex settings so
         # that the VectorStoreIndex uses it for both ingestion and querying.

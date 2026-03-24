@@ -67,7 +67,7 @@ class TestRAGState:
 class TestVLLMReranker:
     """Test VLLMReranker with a stubbed httpx.Client."""
 
-    def _make_reranker(self, stub_response: dict) -> Any:
+    def _make_reranker(self, stub_response: dict, api_key: str | None = None) -> Any:
         from flexrag.rerankers.vllm_reranker import VLLMReranker
 
         mock_client = MagicMock()
@@ -76,7 +76,10 @@ class TestVLLMReranker:
         mock_resp.raise_for_status = MagicMock()
         mock_client.post.return_value = mock_resp
         return VLLMReranker(
-            base_url="http://fake", model="fake-reranker", http_client=mock_client
+            base_url="http://fake",
+            model="fake-reranker",
+            api_key=api_key,
+            http_client=mock_client,
         )
 
     def test_basic_rerank(self) -> None:
@@ -109,6 +112,24 @@ class TestVLLMReranker:
         assert len(result) == 2
         assert result[0].score >= result[1].score  # descending order
 
+    def test_api_key_sent_in_header(self) -> None:
+        """Authorization header must be included when api_key is set."""
+        docs = [Document(text="doc A")]
+        stub = {"results": [{"index": 0, "relevance_score": 0.7}]}
+        reranker = self._make_reranker(stub, api_key="test-secret")
+        reranker.rerank("query", docs, top_k=1)
+        _, call_kwargs = reranker._client.post.call_args
+        assert call_kwargs["headers"]["Authorization"] == "Bearer test-secret"
+
+    def test_no_api_key_omits_header(self) -> None:
+        """No Authorization header should be sent when api_key is None."""
+        docs = [Document(text="doc A")]
+        stub = {"results": [{"index": 0, "relevance_score": 0.7}]}
+        reranker = self._make_reranker(stub, api_key=None)
+        reranker.rerank("query", docs, top_k=1)
+        _, call_kwargs = reranker._client.post.call_args
+        assert "Authorization" not in call_kwargs["headers"]
+
 
 # ---------------------------------------------------------------------------
 # VLLMEmbedding (stub HTTP)
@@ -116,7 +137,7 @@ class TestVLLMReranker:
 
 
 class TestVLLMEmbedding:
-    def _make_embedding(self, vectors: list[list[float]]) -> Any:
+    def _make_embedding(self, vectors: list[list[float]], api_key: str | None = None) -> Any:
         from flexrag.retrievers.llamaindex_retriever import VLLMEmbedding
 
         mock_client = MagicMock()
@@ -129,7 +150,10 @@ class TestVLLMEmbedding:
         mock_resp.raise_for_status = MagicMock()
         mock_client.post.return_value = mock_resp
         return VLLMEmbedding(
-            base_url="http://fake", model="fake-embed", http_client=mock_client
+            base_url="http://fake",
+            model="fake-embed",
+            api_key=api_key,
+            http_client=mock_client,
         )
 
     def test_single_embedding(self) -> None:
@@ -143,6 +167,20 @@ class TestVLLMEmbedding:
         assert len(vecs) == 2
         assert vecs[0] == [1.0]
         assert vecs[1] == [2.0]
+
+    def test_api_key_sent_in_header(self) -> None:
+        """Authorization header must be included when api_key is set."""
+        embed = self._make_embedding([[0.1]], api_key="embed-secret")
+        embed.get_text_embedding("hello")
+        _, call_kwargs = embed._client.post.call_args
+        assert call_kwargs["headers"]["Authorization"] == "Bearer embed-secret"
+
+    def test_no_api_key_omits_header(self) -> None:
+        """No Authorization header should be sent when api_key is None."""
+        embed = self._make_embedding([[0.1]], api_key=None)
+        embed.get_text_embedding("hello")
+        _, call_kwargs = embed._client.post.call_args
+        assert "Authorization" not in call_kwargs["headers"]
 
 
 # ---------------------------------------------------------------------------

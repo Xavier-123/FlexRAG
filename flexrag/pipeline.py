@@ -42,8 +42,8 @@ class RAGPipeline:
 
     1. **Retrieve** – find relevant document chunks via LlamaIndex.
     2. **Rerank** – score candidates with a vLLM cross-encoder.
-    3. **Optimize Context** – extract key passages using GPT-4o.
-    4. **Generate** – produce a structured answer with OpenAI Structured Output.
+    3. **Optimize Context** – extract key passages using a vLLM-hosted LLM.
+    4. **Generate** – produce a structured answer via a vLLM-hosted LLM.
 
     All components are decoupled through abstract base classes (strategy
     pattern) so they can be swapped individually.
@@ -107,26 +107,33 @@ class RAGPipeline:
             index=None,
             embed_base_url=settings.vllm_base_url,
             embed_model_name=settings.vllm_embedding_model,
+            embed_api_key=settings.vllm_api_key,
         )
 
         # -- Reranker (vLLM cross-encoder) --
         reranker = VLLMReranker(
             base_url=settings.vllm_base_url,
             model=settings.vllm_reranker_model,
+            api_key=settings.vllm_api_key,
         )
 
-        # -- Context Optimiser (GPT-4o via LangChain) --
+        # vLLM OpenAI-compatible base URL (includes /v1 path suffix)
+        vllm_openai_base = settings.vllm_base_url.rstrip("/") + "/v1"
+
+        # -- Context Optimiser (LLM via vLLM) --
         llm = ChatOpenAI(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,  # type: ignore[arg-type]
+            model=settings.vllm_llm_model,
+            api_key=settings.vllm_api_key,  # type: ignore[arg-type]
+            base_url=vllm_openai_base,
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
 
-        # -- Generator (GPT-4o Structured Output) --
+        # -- Generator (vLLM Structured Output) --
         generator = OpenAIGenerator(
-            model=settings.openai_model,
-            api_key=settings.openai_api_key,
+            model=settings.vllm_llm_model,
+            api_key=settings.vllm_api_key,
+            base_url=vllm_openai_base,
         )
 
         return cls(
