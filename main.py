@@ -1,8 +1,20 @@
 """
-FlexRAG – runnable example / quick-start.
+FlexRAG – interactive question-answering entry point.
 
-This script demonstrates how to wire the pipeline together, index a small
-corpus, and ask a question.
+This script demonstrates how to wire the full pipeline together with a
+persistent FAISS knowledge base and provides an interactive Q&A loop.
+
+Start-up logic
+--------------
+1. Check whether a FAISS index already exists in ``KNOWLEDGE_PERSIST_DIR``
+   (default: ``./knowledge_base``).
+2. If it **exists** → load automatically.
+3. If it does **not** exist → offer two choices:
+
+   * **Build** – point to a local directory of documents (``.txt`` / ``.md``
+     / ``.pdf``), chunk them, embed them, and save the index to disk.
+   * **Demo** – index five short in-memory paragraphs so you can try the
+     pipeline without any external documents.
 
 Prerequisites
 -------------
@@ -18,6 +30,11 @@ Prerequisites
        VLLM_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
        VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
+       # Optional – knowledge base settings (shown with defaults)
+       KNOWLEDGE_PERSIST_DIR=./knowledge_base
+       KNOWLEDGE_CHUNK_SIZE=512
+       KNOWLEDGE_CHUNK_OVERLAP=50
+
 2. Install dependencies::
 
        pip install -r requirements.txt
@@ -32,82 +49,256 @@ Usage
 from __future__ import annotations
 
 import logging
+import sys
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
 )
 
+from langchain_openai import ChatOpenAI
+
 from flexrag import RAGPipeline
 from flexrag.config import Settings
+from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.generators.openai_generator import OpenAIGenerator
+from flexrag.knowledge import FaissKnowledgeBase
+from flexrag.rerankers.vllm_reranker import VLLMReranker
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Demo corpus (used when no external document directory is provided)
+# ---------------------------------------------------------------------------
+
+_DEMO_CORPUS = [
+    (
+        "Retrieval-Augmented Generation (RAG) is a technique that combines "
+        "information retrieval with large language models.  A retriever first "
+        "fetches relevant documents from a knowledge base; the LLM then "
+        "generates an answer conditioned on those documents."
+    ),
+    (
+        "LangGraph is an open-source library built on top of LangChain that "
+        "lets you model complex LLM workflows as directed graphs (StateGraph).  "
+        "Each node in the graph is a Python function that reads from and writes "
+        "to a shared state object."
+    ),
+    (
+        "LlamaIndex (formerly GPT Index) is a data framework for LLM "
+        "applications.  It provides connectors, indexes, and query engines for "
+        "ingesting, structuring, and retrieving data from diverse sources."
+    ),
+    (
+        "vLLM is a high-throughput LLM inference engine that supports "
+        "continuous batching and paged attention.  It exposes an OpenAI-"
+        "compatible REST API, making it easy to swap in as the backend for "
+        "embedding and reranker models."
+    ),
+    (
+        "The strategy design pattern defines a family of algorithms, "
+        "encapsulates each one, and makes them interchangeable.  In Python this "
+        "is typically implemented with abstract base classes (abc.ABC)."
+    ),
+]
+
+
+# ---------------------------------------------------------------------------
+# Knowledge-base helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_knowledge_base(settings: Settings) -> FaissKnowledgeBase:
+    """Create a :class:`FaissKnowledgeBase` wired to the configured embedding endpoint."""
+    return FaissKnowledgeBase(
+        embed_base_url=settings.embedding_base_url,
+        embed_model_name=settings.vllm_embedding_model,
+        embed_api_key=settings.embedding_api_key,
+    )
+
+
+def build_knowledge_base(directory: str, settings: Settings) -> FaissKnowledgeBase:
+    """Load files from *directory*, build the FAISS index, and save it.
+
+    Args:
+        directory: Path to a local directory containing ``.txt``, ``.md``,
+            or ``.pdf`` files.
+        settings: Application settings (provides persist directory and chunk
+            configuration).
+
+    Returns:
+        A ready-to-use :class:`FaissKnowledgeBase` instance.
+    """
+    kb = _make_knowledge_base(settings)
+    count = kb.load_files(directory)
+    print(f"  Loaded {count} file(s) from '{directory}'.")
+
+    print(
+        f"  Building index "
+        f"(chunk_size={settings.knowledge_chunk_size}, "
+        f"chunk_overlap={settings.knowledge_chunk_overlap}) ..."
+    )
+    kb.build_index(
+        chunk_size=settings.knowledge_chunk_size,
+        chunk_overlap=settings.knowledge_chunk_overlap,
+    )
+
+    kb.save(settings.knowledge_persist_dir)
+    print(f"  Knowledge base saved to '{settings.knowledge_persist_dir}'.")
+    return kb
+
+
+def load_knowledge_base(settings: Settings) -> FaissKnowledgeBase:
+    """Restore a previously built knowledge base from disk.
+
+    Args:
+        settings: Application settings (provides persist directory and
+            embedding configuration).
+
+    Returns:
+        A ready-to-use :class:`FaissKnowledgeBase` instance.
+    """
+    kb = _make_knowledge_base(settings)
+    kb.load(settings.knowledge_persist_dir)
+    return kb
+
+
+# ---------------------------------------------------------------------------
+# Pipeline assembly
+# ---------------------------------------------------------------------------
+
+
+def _build_pipeline(retriever: FaissKnowledgeBase, settings: Settings) -> RAGPipeline:
+    """Wire up all pipeline components around *retriever*."""
+    reranker = VLLMReranker(
+        base_url=settings.reranker_base_url,
+        model=settings.vllm_reranker_model,
+        api_key=settings.reranker_api_key,
+    )
+    llm = ChatOpenAI(
+        model=settings.vllm_llm_model,
+        api_key=settings.llm_api_key,  # type: ignore[arg-type]
+        base_url=settings.llm_base_url,
+        temperature=0.0,
+    )
+    context_optimizer = LLMContextOptimizer(llm=llm)
+    generator = OpenAIGenerator(
+        model=settings.vllm_llm_model,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+    )
+    return RAGPipeline(
+        retriever=retriever,
+        reranker=reranker,
+        context_optimizer=context_optimizer,
+        generator=generator,
+        settings=settings,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Interactive Q&A loop
+# ---------------------------------------------------------------------------
+
+
+def interactive_qa(pipeline: RAGPipeline) -> None:
+    """Run an interactive question-answering loop.
+
+    Type ``quit``, ``exit``, or ``q`` (case-insensitive) to stop.
+
+    Args:
+        pipeline: Fully initialised :class:`RAGPipeline`.
+    """
+    print("\n" + "=" * 60)
+    print("FlexRAG -- Interactive Q&A  (type 'quit' to exit)")
+    print("=" * 60)
+
+    while True:
+        try:
+            query = input("\nQuestion: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nBye!")
+            break
+
+        if not query:
+            continue
+        if query.lower() in {"quit", "exit", "q"}:
+            print("Bye!")
+            break
+
+        try:
+            output = pipeline.run(query)
+        except RuntimeError as exc:
+            print(f"[ERROR] {exc}")
+            continue
+
+        print()
+        print(f"Answer  : {output.answer}")
+        if output.evidence:
+            print("Evidence:")
+            for i, snippet in enumerate(output.evidence, 1):
+                preview = snippet[:120] + ("..." if len(snippet) > 120 else "")
+                print(f"  [{i}] {preview}")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:
-    """Demonstrate the FlexRAG pipeline end-to-end."""
-    # --------------------------------------------------------------------
-    # 1. Load settings (from .env or environment variables)
-    # --------------------------------------------------------------------
-    settings = Settings()  # reads OPENAI_API_KEY, VLLM_BASE_URL, etc.
+    """Start FlexRAG: check for a FAISS knowledge base and begin Q&A."""
+    settings = Settings()
+    persist_dir = settings.knowledge_persist_dir
 
-    # --------------------------------------------------------------------
-    # 2. Build the pipeline using the factory method
-    # --------------------------------------------------------------------
-    pipeline = RAGPipeline.from_settings(settings)
+    # ------------------------------------------------------------------ #
+    # 1. Check whether a persisted knowledge base already exists          #
+    # ------------------------------------------------------------------ #
+    if FaissKnowledgeBase.index_exists(persist_dir):
+        print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
+        kb = load_knowledge_base(settings)
+        pipeline = _build_pipeline(kb, settings)
 
-    # --------------------------------------------------------------------
-    # 3. Index a small in-memory corpus
-    # --------------------------------------------------------------------
-    corpus = [
-        (
-            "Retrieval-Augmented Generation (RAG) is a technique that combines "
-            "information retrieval with large language models.  A retriever first "
-            "fetches relevant documents from a knowledge base; the LLM then "
-            "generates an answer conditioned on those documents."
-        ),
-        (
-            "LangGraph is an open-source library built on top of LangChain that "
-            "lets you model complex LLM workflows as directed graphs (StateGraph).  "
-            "Each node in the graph is a Python function that reads from and writes "
-            "to a shared state object."
-        ),
-        (
-            "LlamaIndex (formerly GPT Index) is a data framework for LLM "
-            "applications.  It provides connectors, indexes, and query engines for "
-            "ingesting, structuring, and retrieving data from diverse sources."
-        ),
-        (
-            "vLLM is a high-throughput LLM inference engine that supports "
-            "continuous batching and paged attention.  It exposes an OpenAI-"
-            "compatible REST API, making it easy to swap in as the backend for "
-            "embedding and reranker models."
-        ),
-        (
-            "The strategy design pattern defines a family of algorithms, "
-            "encapsulates each one, and makes them interchangeable.  In Python this "
-            "is typically implemented with abstract base classes (abc.ABC)."
-        ),
-    ]
+    else:
+        # ---------------------------------------------------------------- #
+        # 2. No knowledge base found – offer build or demo                 #
+        # ---------------------------------------------------------------- #
+        print(f"[INFO] No knowledge base found at '{persist_dir}'.")
+        print()
+        print("Choose an option:")
+        print("  b  -- Build from a local directory of documents")
+        print("  d  -- Use built-in demo data (no files needed)")
+        print("  q  -- Quit")
+        print()
 
-    pipeline.add_documents(
-        texts=corpus,
-        metadatas=[{"source": f"doc_{i}"} for i in range(len(corpus))],
-    )
+        choice = input("Option [b/d/q]: ").strip().lower()
 
-    # --------------------------------------------------------------------
-    # 4. Ask a question
-    # --------------------------------------------------------------------
-    query = "What is Retrieval-Augmented Generation and how does it work?"
-    output = pipeline.run(query)
+        if choice == "b":
+            directory = input("Enter the path to your documents directory: ").strip()
+            if not directory:
+                print("[ERROR] No directory specified. Exiting.")
+                sys.exit(1)
+            print()
+            kb = build_knowledge_base(directory, settings)
+            pipeline = _build_pipeline(kb, settings)
 
-    print("\n" + "=" * 60)
-    print(f"Query   : {query}")
-    print("=" * 60)
-    print(f"Answer  : {output.answer}")
-    print("-" * 60)
-    print("Evidence:")
-    for i, snippet in enumerate(output.evidence, 1):
-        print(f"  [{i}] {snippet[:120]}{'...' if len(snippet) > 120 else ''}")
-    print("=" * 60)
+        elif choice == "d":
+            print("[INFO] Indexing demo corpus ...")
+            pipeline = RAGPipeline.from_settings(settings)
+            pipeline.add_documents(
+                texts=_DEMO_CORPUS,
+                metadatas=[{"source": f"demo_{i}"} for i in range(len(_DEMO_CORPUS))],
+            )
+            print("[INFO] Demo corpus indexed.")
+
+        else:
+            print("Exiting.")
+            sys.exit(0)
+
+    # ------------------------------------------------------------------ #
+    # 3. Interactive Q&A                                                   #
+    # ------------------------------------------------------------------ #
+    interactive_qa(pipeline)
 
 
 if __name__ == "__main__":

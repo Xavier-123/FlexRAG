@@ -24,6 +24,7 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 
+from flexrag.abstractions.base_retriever import BaseRetriever
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
 from flexrag.generators.openai_generator import OpenAIGenerator
@@ -61,7 +62,7 @@ class RAGPipeline:
 
     def __init__(
         self,
-        retriever: LlamaIndexRetriever,
+        retriever: BaseRetriever,
         reranker: VLLMReranker,
         context_optimizer: LLMContextOptimizer,
         generator: OpenAIGenerator,

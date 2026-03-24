@@ -108,3 +108,20 @@ class Settings(BaseSettings):
         validation_alias="CONTEXT_MAX_TOKENS",
         description="Token budget for the optimised context",
     )
+
+    # --- Knowledge base ---
+    knowledge_persist_dir: str = Field(
+        default="./knowledge_base",
+        validation_alias="KNOWLEDGE_PERSIST_DIR",
+        description="Directory where the FAISS knowledge base is stored",
+    )
+    knowledge_chunk_size: int = Field(
+        default=512,
+        validation_alias="KNOWLEDGE_CHUNK_SIZE",
+        description="Maximum token count per document chunk",
+    )
+    knowledge_chunk_overlap: int = Field(
+        default=50,
+        validation_alias="KNOWLEDGE_CHUNK_OVERLAP",
+        description="Token overlap between consecutive document chunks",
+    )
