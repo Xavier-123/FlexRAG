@@ -73,7 +73,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
     # BaseContextOptimizer interface
     # ------------------------------------------------------------------
 
-    def optimize(
+    async def optimize(
         self,
         query: str,
         documents: list[Document],
@@ -104,7 +104,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
         )
 
         try:
-            response = self._llm.invoke(
+            response = await self._llm.ainvoke(
                 [
                     SystemMessage(content=_SYSTEM_PROMPT_ZH),
                     HumanMessage(content=human_msg),

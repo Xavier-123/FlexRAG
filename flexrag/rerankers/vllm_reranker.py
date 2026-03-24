@@ -49,7 +49,7 @@ class VLLMReranker(BaseReranker):
         model: Name of the reranker model deployed on the server.
         api_key: Optional API key sent as ``Authorization: Bearer <api_key>``
             for servers that require authentication.
-        http_client: Optional pre-built :class:`httpx.Client` (useful for
+        http_client: Optional pre-built :class:`httpx.AsyncClient` (useful for
             testing / dependency injection).
 
     Example::
@@ -59,7 +59,7 @@ class VLLMReranker(BaseReranker):
             model="BAAI/bge-reranker-v2-m3",
             api_key="my-secret-key",
         )
-        top_docs = reranker.rerank(query="What is RAG?", documents=docs, top_k=3)
+        top_docs = await reranker.rerank(query="What is RAG?", documents=docs, top_k=3)
     """
 
     def __init__(
@@ -73,13 +73,13 @@ class VLLMReranker(BaseReranker):
         self._endpoint = base_url
         self._model = model
         self._api_key = api_key
-        self._client: httpx.Client = http_client or httpx.Client(timeout=60.0)
+        self._client: httpx.AsyncClient = http_client or httpx.AsyncClient(timeout=60.0)
 
     # ------------------------------------------------------------------
     # BaseReranker interface
     # ------------------------------------------------------------------
 
-    def rerank(
+    async def rerank(
         self,
         query: str,
         documents: list[Document],
@@ -118,7 +118,7 @@ class VLLMReranker(BaseReranker):
             len(texts),
             self._endpoint,
         )
-        response = self._client.post(self._endpoint, json=payload, headers=headers)
+        response = await self._client.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
 
         results: list[dict[str, Any]] = response.json()["results"]

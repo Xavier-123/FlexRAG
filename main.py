@@ -48,6 +48,7 @@ Usage
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 
@@ -119,7 +120,7 @@ def _make_retriever(settings: Settings) -> LlamaIndexRetriever:
     )
 
 
-def build_knowledge_base(directory: str, settings: Settings) -> None:
+async def build_knowledge_base(directory: str, settings: Settings) -> None:
     """Load files from *directory*, build the FAISS index, and save it.
 
     Args:
@@ -133,7 +134,7 @@ def build_knowledge_base(directory: str, settings: Settings) -> None:
         embed_model_name=settings.vllm_embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
-    count = builder.load_files(directory)
+    count = await builder.load_files(directory)
     print(f"  Loaded {count} file(s) from '{directory}'.")
 
     print(
@@ -141,16 +142,16 @@ def build_knowledge_base(directory: str, settings: Settings) -> None:
         f"(chunk_size={settings.knowledge_chunk_size}, "
         f"chunk_overlap={settings.knowledge_chunk_overlap}) ..."
     )
-    builder.build_index(
+    await builder.build_index(
         chunk_size=settings.knowledge_chunk_size,
         chunk_overlap=settings.knowledge_chunk_overlap,
     )
 
-    builder.save(settings.knowledge_persist_dir)
+    await builder.save(settings.knowledge_persist_dir)
     print(f"  Knowledge base saved to '{settings.knowledge_persist_dir}'.")
 
 
-def load_retriever(settings: Settings) -> LlamaIndexRetriever:
+async def load_retriever(settings: Settings) -> LlamaIndexRetriever:
     """Restore a previously built knowledge base from disk into a retriever.
 
     Args:
@@ -161,7 +162,7 @@ def load_retriever(settings: Settings) -> LlamaIndexRetriever:
         A ready-to-use :class:`LlamaIndexRetriever` instance.
     """
     retriever = _make_retriever(settings)
-    retriever.load_index(settings.knowledge_persist_dir)
+    await retriever.load_index(settings.knowledge_persist_dir)
     return retriever
 
 
@@ -203,7 +204,7 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
 # ---------------------------------------------------------------------------
 
 
-def interactive_qa(pipeline: RAGPipeline) -> None:
+async def interactive_qa(pipeline: RAGPipeline) -> None:
     """Run an interactive question-answering loop.
 
     Type ``quit``, ``exit``, or ``q`` (case-insensitive) to stop.
@@ -229,7 +230,7 @@ def interactive_qa(pipeline: RAGPipeline) -> None:
             break
 
         try:
-            output = pipeline.run(query)
+            output = await pipeline.arun(query)
         except RuntimeError as exc:
             print(f"[ERROR] {exc}")
             continue
@@ -248,7 +249,7 @@ def interactive_qa(pipeline: RAGPipeline) -> None:
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
+async def main() -> None:
     """Start FlexRAG: check for a FAISS knowledge base and begin Q&A."""
     settings = Settings()
     persist_dir = settings.knowledge_persist_dir
@@ -258,7 +259,7 @@ def main() -> None:
     # ------------------------------------------------------------------ #
     if FaissKnowledgeBuilder.index_exists(persist_dir):
         print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
-        retriever = load_retriever(settings)
+        retriever = await load_retriever(settings)
         pipeline = _build_pipeline(retriever, settings)
 
     else:
@@ -281,8 +282,8 @@ def main() -> None:
                 print("[ERROR] No directory specified. Exiting.")
                 sys.exit(1)
             print()
-            build_knowledge_base(directory, settings)
-            retriever = load_retriever(settings)
+            await build_knowledge_base(directory, settings)
+            retriever = await load_retriever(settings)
             pipeline = _build_pipeline(retriever, settings)
 
         elif choice == "d":
@@ -301,8 +302,8 @@ def main() -> None:
     # ------------------------------------------------------------------ #
     # 3. Interactive Q&A                                                   #
     # ------------------------------------------------------------------ #
-    interactive_qa(pipeline)
+    await interactive_qa(pipeline)
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

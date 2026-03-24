@@ -36,7 +36,7 @@ class BaseKnowledgeBuilder(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def load_files(self, path: str | list[str]) -> int:
+    async def load_files(self, path: str | list[str]) -> int:
         """Load documents from a directory path or an explicit list of file paths.
 
         Supported file formats (at minimum): ``.txt``, ``.md``, ``.pdf``.
@@ -51,7 +51,7 @@ class BaseKnowledgeBuilder(ABC):
         """
 
     @abstractmethod
-    def build_index(
+    async def build_index(
         self,
         chunk_size: int = 512,
         chunk_overlap: int = 50,
@@ -66,7 +66,7 @@ class BaseKnowledgeBuilder(ABC):
         """
 
     @abstractmethod
-    def save(self, persist_dir: str) -> None:
+    async def save(self, persist_dir: str) -> None:
         """Persist the current vector index to *persist_dir* on disk.
 
         The directory is created if it does not exist.  Calling this method

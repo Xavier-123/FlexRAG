@@ -161,7 +161,27 @@ class RAGPipeline:
         logger.info("Indexed %d document(s)", len(texts))
 
     def run(self, query: str) -> RAGOutput:
-        """Execute the full RAG pipeline for *query*.
+        """Execute the full RAG pipeline for *query* (synchronous wrapper).
+
+        Prefer :meth:`arun` in async code. This convenience wrapper calls
+        :func:`asyncio.run` and therefore **cannot** be used inside an
+        already-running event loop.
+
+        Args:
+            query: The user's question.
+
+        Returns:
+            A :class:`~flexrag.schema.RAGOutput` containing ``answer`` and
+            ``evidence``.
+
+        Raises:
+            RuntimeError: If any pipeline node reports an unrecoverable error.
+        """
+        import asyncio
+        return asyncio.run(self.arun(query))
+
+    async def arun(self, query: str) -> RAGOutput:
+        """Execute the full RAG pipeline for *query* asynchronously.
 
         Args:
             query: The user's question.
@@ -174,7 +194,7 @@ class RAGPipeline:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
         logger.info("Pipeline started – query: %r", query)
-        result: dict[str, Any] = self._graph.invoke({"query": query})
+        result: dict[str, Any] = await self._graph.ainvoke({"query": query})
 
         if error := result.get("error"):
             raise RuntimeError(f"RAG pipeline error: {error}")

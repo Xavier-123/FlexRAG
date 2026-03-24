@@ -23,13 +23,14 @@ Usage example::
     )
 
     # Build from a directory of documents
-    builder.load_files("./my_docs")
-    builder.build_index(chunk_size=512, chunk_overlap=50)
-    builder.save("./knowledge_base")
+    count = await builder.load_files("./my_docs")
+    await builder.build_index(chunk_size=512, chunk_overlap=50)
+    await builder.save("./knowledge_base")
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -110,7 +111,7 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
     # Lifecycle
     # ------------------------------------------------------------------
 
-    def load_files(self, path: str | list[str]) -> int:
+    async def load_files(self, path: str | list[str]) -> int:
         """Load supported documents from a directory or a list of file paths.
 
         Uses LlamaIndex :class:`~llama_index.core.SimpleDirectoryReader` which
@@ -133,11 +134,11 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
         else:
             reader = SimpleDirectoryReader(input_dir=path)
 
-        self._raw_docs = reader.load_data()
+        self._raw_docs = await asyncio.to_thread(reader.load_data)
         logger.info("Loaded %d document(s) from %s", len(self._raw_docs), path)
         return len(self._raw_docs)
 
-    def build_index(
+    async def build_index(
         self,
         chunk_size: int = 512,
         chunk_overlap: int = 50,
@@ -176,7 +177,7 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
         )
 
         # -- Detect embedding dimension --
-        embed_dim = self._detect_embedding_dim()
+        embed_dim = await asyncio.to_thread(self._detect_embedding_dim)
         logger.debug("Detected embedding dimension: %d", embed_dim)
 
         # -- Build FAISS index --
@@ -185,10 +186,12 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
         storage_context = StorageContext.from_defaults(
             vector_store=self._vector_store
         )
-        self._index = VectorStoreIndex(nodes, storage_context=storage_context)
+        self._index = await asyncio.to_thread(
+            VectorStoreIndex, nodes, storage_context=storage_context
+        )
         logger.info("FAISS index built with %d vector(s)", faiss_idx.ntotal)
 
-    def save(self, persist_dir: str) -> None:
+    async def save(self, persist_dir: str) -> None:
         """Persist the FAISS index and document store to *persist_dir*.
 
         Creates the directory (and any missing parents) if it does not exist.
@@ -208,10 +211,12 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
 
         # Save FAISS binary
         faiss_path = os.path.join(persist_dir, _FAISS_FILE)
-        self._vector_store.persist(persist_path=faiss_path)
+        await asyncio.to_thread(self._vector_store.persist, persist_path=faiss_path)
 
         # Save docstore / index_store metadata
-        self._index.storage_context.persist(persist_dir=persist_dir)
+        await asyncio.to_thread(
+            self._index.storage_context.persist, persist_dir=persist_dir
+        )
 
         logger.info("Knowledge base saved to '%s'", persist_dir)
 

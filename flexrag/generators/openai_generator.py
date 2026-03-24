@@ -89,7 +89,7 @@ class OpenAIGenerator(BaseGenerator):
     # BaseGenerator interface
     # ------------------------------------------------------------------
 
-    def generate(
+    async def generate(
         self,
         query: str,
         context: str,
@@ -120,7 +120,7 @@ class OpenAIGenerator(BaseGenerator):
 
         logger.debug("Calling OpenAI structured output for query: %r", query)
         try:
-            result: RAGOutput = self._chain.invoke(  # type: ignore[assignment]
+            result: RAGOutput = await self._chain.ainvoke(  # type: ignore[assignment]
                 [
                     SystemMessage(content=_SYSTEM_PROMPT_ZH),
                     HumanMessage(content=human_prompt),

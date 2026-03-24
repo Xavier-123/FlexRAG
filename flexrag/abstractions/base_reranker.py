@@ -20,7 +20,7 @@ class BaseReranker(ABC):
     """
 
     @abstractmethod
-    def rerank(
+    async def rerank(
         self,
         query: str,
         documents: list[Document],
