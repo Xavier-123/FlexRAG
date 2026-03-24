@@ -161,11 +161,11 @@ class RAGPipeline:
         logger.info("Indexed %d document(s)", len(texts))
 
     def run(self, query: str) -> RAGOutput:
-        """Execute the full RAG pipeline for *query*.
+        """Execute the full RAG pipeline for *query* (synchronous wrapper).
 
-        .. deprecated::
-            Use :meth:`arun` for the async version. This sync wrapper is
-            kept for backward compatibility with callers that cannot use async.
+        Prefer :meth:`arun` in async code. This convenience wrapper calls
+        :func:`asyncio.run` and therefore **cannot** be used inside an
+        already-running event loop.
 
         Args:
             query: The user's question.
@@ -178,7 +178,7 @@ class RAGPipeline:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
         import asyncio
-        return asyncio.get_event_loop().run_until_complete(self.arun(query))
+        return asyncio.run(self.arun(query))
 
     async def arun(self, query: str) -> RAGOutput:
         """Execute the full RAG pipeline for *query* asynchronously.

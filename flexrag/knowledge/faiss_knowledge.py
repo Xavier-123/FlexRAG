@@ -187,7 +187,7 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
             vector_store=self._vector_store
         )
         self._index = await asyncio.to_thread(
-            lambda: VectorStoreIndex(nodes, storage_context=storage_context)
+            VectorStoreIndex, nodes, storage_context=storage_context
         )
         logger.info("FAISS index built with %d vector(s)", faiss_idx.ntotal)
 

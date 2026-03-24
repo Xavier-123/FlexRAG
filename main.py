@@ -218,7 +218,7 @@ async def interactive_qa(pipeline: RAGPipeline) -> None:
 
     while True:
         try:
-            query = (await asyncio.to_thread(input, "\nQuestion: ")).strip()
+            query = input("\nQuestion: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\nBye!")
             break
@@ -274,12 +274,10 @@ async def main() -> None:
         print("  q  -- Quit")
         print()
 
-        choice = (await asyncio.to_thread(input, "Option [b/d/q]: ")).strip().lower()
+        choice = input("Option [b/d/q]: ").strip().lower()
 
         if choice == "b":
-            directory = (await asyncio.to_thread(
-                input, "Enter the path to your documents directory: "
-            )).strip()
+            directory = input("Enter the path to your documents directory: ").strip()
             if not directory:
                 print("[ERROR] No directory specified. Exiting.")
                 sys.exit(1)
