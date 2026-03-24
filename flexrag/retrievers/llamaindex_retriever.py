@@ -93,7 +93,7 @@ class VLLMEmbedding(BaseEmbedding):
 
     def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
         """批量生成文档向量 (重写此方法以利用 vLLM 的批量推理加速)"""
-        payload = {"model": self.model_name, "input": texts}
+        payload = {"model": self.model_name, "input": texts, "encoding_format": "float"}
         headers: dict[str, str] = {}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

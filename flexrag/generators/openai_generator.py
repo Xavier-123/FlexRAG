@@ -29,6 +29,11 @@ _SYSTEM_PROMPT = (
     "in the 'evidence' field."
 )
 
+_SYSTEM_PROMPT_ZH = '''你是一个严谨的基于事实的问答助手。请严格遵循以下规则：
+严禁脱稿：仅使用提供的上下文（Context）信息回答问题，绝不能使用外部知识或自行推测。
+诚实作答：如果上下文信息不足以回答该问题，请直接回答‘抱歉，提供的上下文中没有足够的信息’。
+提供证据：务必在 evidence 字段中，一字不差地引用支持你回答的原文段落。'''
+
 
 class OpenAIGenerator(BaseGenerator):
     """Answer generator that calls an LLM with structured output.
@@ -117,7 +122,7 @@ class OpenAIGenerator(BaseGenerator):
         try:
             result: RAGOutput = self._chain.invoke(  # type: ignore[assignment]
                 [
-                    SystemMessage(content=_SYSTEM_PROMPT),
+                    SystemMessage(content=_SYSTEM_PROMPT_ZH),
                     HumanMessage(content=human_prompt),
                 ]
             )

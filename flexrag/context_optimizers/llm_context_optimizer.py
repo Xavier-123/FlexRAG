@@ -30,6 +30,11 @@ _SYSTEM_PROMPT = (
     "Separate extracted passages with a blank line."
 )
 
+_SYSTEM_PROMPT_ZH = (
+"你是一个精准的上下文提取专家。给定一个用户问题和若干文档段落，请仅提取并返回与回答该问题直接相关的句子或段落。"
+"请勿添加任何评论、引言或结语。"
+"不同提取片段之间请用空行分隔。"
+)
 
 class LLMContextOptimizer(BaseContextOptimizer):
     """Context optimiser powered by an LLM (e.g. GPT-4o).
@@ -95,13 +100,13 @@ class LLMContextOptimizer(BaseContextOptimizer):
         human_msg = (
             f"Question: {query}\n\n"
             f"Documents:\n{doc_listing}\n\n"
-            "Extract the relevant passages."
+            "提取相关段落。"
         )
 
         try:
             response = self._llm.invoke(
                 [
-                    SystemMessage(content=_SYSTEM_PROMPT),
+                    SystemMessage(content=_SYSTEM_PROMPT_ZH),
                     HumanMessage(content=human_msg),
                 ]
             )

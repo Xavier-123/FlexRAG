@@ -73,7 +73,4 @@ class RAGOutput(BaseModel):
     """
 
     answer: str = Field(..., description="The final generated answer")
-    evidence: list[str] = Field(
-        ...,
-        description="Source document excerpts used to produce the answer",
-    )
+    evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
