@@ -34,26 +34,43 @@ class Settings(BaseSettings):
     )
 
     vllm_base_url: str = Field(
-        "http://localhost:8000",
+        default="http://localhost:8018/v1",
+        validation_alias="VLLM_BASE_URL",
         description="Base URL of the vLLM serving endpoint",
     )
-    vllm_api_key: str = Field(..., description="API key for the vLLM server")
+    vllm_api_key: str = Field(
+        default="sk-xxxx",
+        validation_alias="VLLM_API_KEY",
+        description="API key for the vLLM server"
+    )
     vllm_llm_model: str = Field(
         "Qwen/Qwen2.5-7B-Instruct",
+        validation_alias="VLLM_LLM_MODEL",
         description="Chat LLM model name served by vLLM",
     )
     vllm_embedding_model: str = Field(
         "BAAI/bge-large-en-v1.5",
+        validation_alias="VLLM_EMBEDDING_MODEL",
         description="Embedding model name served by vLLM",
     )
     vllm_reranker_model: str = Field(
         "BAAI/bge-reranker-v2-m3",
+        validation_alias="VLLM_RERANKER_MODEL",
         description="Reranker model name served by vLLM",
     )
 
-    top_k_retrieval: int = Field(10, description="Number of docs retrieved initially")
-    top_k_rerank: int = Field(5, description="Number of docs kept after reranking")
+    top_k_retrieval: int = Field(
+        10,
+        validation_alias="TOP_K_RETRIEVAL",
+        description="Number of docs retrieved initially"
+    )
+    top_k_rerank: int = Field(
+        5,
+        validation_alias="TOP_K_RERANK",
+        description="Number of docs kept after reranking"
+    )
     context_max_tokens: int = Field(
         3000,
+        validation_alias="CONTEXT_MAX_TOKENS",
         description="Token budget for the optimised context",
     )

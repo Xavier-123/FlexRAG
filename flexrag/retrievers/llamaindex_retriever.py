@@ -26,12 +26,14 @@ Architecture overview::
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, List, Optional
+from pydantic import PrivateAttr
 
 from llama_index.core import Settings as LlamaSettings
 from llama_index.core import VectorStoreIndex
 from llama_index.core.base.base_retriever import BaseRetriever as LlamaBaseRetriever
 from llama_index.core.schema import NodeWithScore, TextNode
+from llama_index.core.embeddings import BaseEmbedding
 
 from flexrag.abstractions.base_retriever import BaseRetriever
 from flexrag.schema import Document
@@ -39,20 +41,20 @@ from flexrag.schema import Document
 logger = logging.getLogger(__name__)
 
 
-class VLLMEmbedding:
+class VLLMEmbedding(BaseEmbedding):
     """Minimal OpenAI-compatible embedding wrapper for a vLLM embedding endpoint.
 
-    LlamaIndex accepts any object that exposes ``get_text_embedding`` and
-    ``get_text_embedding_batch`` so this thin wrapper avoids pulling in a
-    heavy additional dependency.
-
-    Args:
-        base_url: Base URL of the vLLM server (e.g. ``"http://localhost:8000"``).
-        model: Name of the embedding model to use.
-        api_key: Optional API key sent as ``Authorization: Bearer <api_key>``
-            for servers that require authentication.
-        http_client: Optional pre-built ``httpx.Client`` (useful for testing).
+    Now properly inherits from LlamaIndex's BaseEmbedding to pass type validation.
     """
+
+    # Pydantic 字段定义
+    base_url: str
+    model_name: str  # LlamaIndex 规范中通常使用 model_name
+    api_key: Optional[str] = None
+
+    # 非序列化的内部私有变量，需要用 PrivateAttr 声明
+    _client: Any = PrivateAttr()
+    _endpoint: str = PrivateAttr()
 
     def __init__(
         self,
@@ -60,49 +62,74 @@ class VLLMEmbedding:
         model: str,
         api_key: str | None = None,
         http_client: Any | None = None,
+        **kwargs: Any,
     ) -> None:
-        import httpx
+        # 1. 初始化父类 (Pydantic BaseModel)
+        super().__init__(
+            base_url=base_url,
+            model_name=model,
+            api_key=api_key,
+            **kwargs
+        )
 
-        self._endpoint = base_url.rstrip("/") + "/v1/embeddings"
+        # 2. 初始化内部变量
+        import httpx
+        # self._endpoint = base_url.rstrip("/") + "/v1/embeddings"
+        self._endpoint = base_url
         self._model = model
         self._api_key = api_key
         self._client = http_client or httpx.Client(timeout=60.0)
 
     # ------------------------------------------------------------------
-    # LlamaIndex embedding protocol
+    # 同步方法 (Synchronous Methods)
     # ------------------------------------------------------------------
+    def _get_query_embedding(self, query: str) -> List[float]:
+        """为检索的问题生成单条向量"""
+        return self._get_text_embeddings([query])[0]
 
-    def get_text_embedding(self, text: str) -> list[float]:
-        """Return a single embedding vector for *text*.
+    def _get_text_embedding(self, text: str) -> List[float]:
+        """为单本文档生成向量"""
+        return self._get_text_embeddings([text])[0]
 
-        Args:
-            text: Input string to embed.
-
-        Returns:
-            A list of floats representing the embedding vector.
-        """
-        return self.get_text_embedding_batch([text])[0]
-
-    def get_text_embedding_batch(
-        self, texts: list[str], show_progress: bool = False
-    ) -> list[list[float]]:
-        """Return embedding vectors for a batch of *texts*.
-
-        Args:
-            texts: List of strings to embed.
-            show_progress: Unused; kept for interface compatibility.
-
-        Returns:
-            A list of embedding vectors (one per input string).
-        """
-        payload = {"model": self._model, "input": texts}
+    def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """批量生成文档向量 (重写此方法以利用 vLLM 的批量推理加速)"""
+        payload = {"model": self.model_name, "input": texts}
         headers: dict[str, str] = {}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         response = self._client.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()["data"]
+
         # Sort by index to preserve order (OpenAI spec)
+        data.sort(key=lambda item: item["index"])
+        return [item["embedding"] for item in data]
+
+    # ------------------------------------------------------------------
+    # 异步方法 (Asynchronous Methods - 解决当前报错)
+    # ------------------------------------------------------------------
+
+    async def _aget_query_embedding(self, query: str) -> List[float]:
+        """异步获取查询问题的向量"""
+        res = await self._aget_text_embeddings([query])
+        return res[0]
+
+    async def _aget_text_embedding(self, text: str) -> List[float]:
+        """异步获取单本文档的向量"""
+        res = await self._aget_text_embeddings([text])
+        return res[0]
+
+    async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """异步批量获取文档向量"""
+        payload = {"model": self.model_name, "input": texts}
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        response = await self._aclient.post(self._endpoint, json=payload, headers=headers)
+        response.raise_for_status()
+        data = response.json()["data"]
         data.sort(key=lambda item: item["index"])
         return [item["embedding"] for item in data]
 

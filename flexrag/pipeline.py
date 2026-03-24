@@ -118,7 +118,8 @@ class RAGPipeline:
         )
 
         # vLLM OpenAI-compatible base URL (includes /v1 path suffix)
-        vllm_openai_base = settings.vllm_base_url.rstrip("/") + "/v1"
+        # vllm_openai_base = settings.vllm_base_url.rstrip("/") + "/v1"
+        vllm_openai_base = settings.vllm_base_url
 
         # -- Context Optimiser (LLM via vLLM) --
         llm = ChatOpenAI(

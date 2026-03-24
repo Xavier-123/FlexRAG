@@ -69,7 +69,8 @@ class VLLMReranker(BaseReranker):
         api_key: str | None = None,
         http_client: Any | None = None,
     ) -> None:
-        self._endpoint = base_url.rstrip("/") + "/v1/rerank"
+        # self._endpoint = base_url.rstrip("/") + "/v1/rerank"
+        self._endpoint = base_url
         self._model = model
         self._api_key = api_key
         self._client: httpx.Client = http_client or httpx.Client(timeout=60.0)
