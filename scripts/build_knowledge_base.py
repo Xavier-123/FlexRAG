@@ -56,7 +56,6 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from flexrag.config import Settings
 from flexrag.knowledge import FaissKnowledgeBuilder
 
 logger = logging.getLogger(__name__)
@@ -109,6 +108,24 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Token overlap between chunks (default: from KNOWLEDGE_CHUNK_OVERLAP setting).",
     )
     parser.add_argument(
+        "--embedding-base-url",
+        type=str,
+        default="http://127.0.0.1:8018/v1/embeddings",
+        help="Base URL for the embedding API.",
+    )
+    parser.add_argument(
+        "--embedding-api-key",
+        type=str,
+        default="sk-xxxx",
+        help="API key for the embedding service.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="Qwen3-Embedding-0.6B",
+        help="Name of the embedding model to use.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite an existing index at the output directory.",
@@ -129,11 +146,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 async def build(args: argparse.Namespace) -> None:
     """Execute the build pipeline according to parsed CLI *args*."""
-    settings = Settings()
 
-    output_dir = args.output_dir or settings.knowledge_persist_dir
-    chunk_size = args.chunk_size if args.chunk_size is not None else settings.knowledge_chunk_size
-    chunk_overlap = args.chunk_overlap if args.chunk_overlap is not None else settings.knowledge_chunk_overlap
+    output_dir = args.output_dir
+    chunk_size = args.chunk_size
+    chunk_overlap = args.chunk_overlap
 
     # ---- safety check ----
     if FaissKnowledgeBuilder.index_exists(output_dir) and not args.force:
@@ -146,9 +162,9 @@ async def build(args: argparse.Namespace) -> None:
 
     # ---- builder ----
     builder = FaissKnowledgeBuilder(
-        embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.vllm_embedding_model,
-        embed_api_key=settings.embedding_api_key,
+        embed_base_url=args.embedding_base_url,
+        embed_model_name=args.embedding_model,
+        embed_api_key=args.embedding_api_key,
     )
 
     # ---- load ----
