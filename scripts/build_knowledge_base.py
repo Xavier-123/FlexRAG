@@ -154,9 +154,9 @@ async def build(args: argparse.Namespace) -> None:
     # ---- load ----
     source = args.input_dir if args.input_dir else args.files
     t0 = time.perf_counter()
-    count = await builder.load_files(source)
+    doc_count = await builder.load_files(source)
     elapsed_load = time.perf_counter() - t0
-    print(f"[INFO] Loaded {count} document(s) in {elapsed_load:.1f}s.")
+    print(f"[INFO] Loaded {doc_count} document(s) in {elapsed_load:.1f}s.")
 
     # ---- build ----
     print(
