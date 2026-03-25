@@ -47,6 +47,7 @@ from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[imp
 
 from flexrag.abstractions.base_knowledge import BaseKnowledgeBuilder
 from flexrag.retrievers.llamaindex_retriever import VLLMEmbedding
+from flexrag.knowledge.custom_reader import _CustomReader
 
 logger = logging.getLogger(__name__)
 
@@ -113,10 +114,6 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
 
     async def load_files(self, path: str | list[str]) -> int:
         """Load supported documents from a directory or a list of file paths.
-
-        Uses LlamaIndex :class:`~llama_index.core.SimpleDirectoryReader` which
-        handles ``.txt``, ``.md``, and ``.pdf`` files out of the box.
-
         Args:
             path: Directory path **or** list of individual file paths.
 
@@ -127,12 +124,20 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
             ValueError: If *path* is an empty list.
             FileNotFoundError: If a directory or file does not exist.
         """
+        file_extractor = {".json": _CustomReader()}
+
         if isinstance(path, list):
             if not path:
                 raise ValueError("path must be a non-empty list of file paths.")
-            reader = SimpleDirectoryReader(input_files=path)
+            reader = SimpleDirectoryReader(
+                input_files=path,
+                file_extractor=file_extractor
+            )
         else:
-            reader = SimpleDirectoryReader(input_dir=path)
+            reader = SimpleDirectoryReader(
+                input_dir=path,
+                file_extractor=file_extractor
+            )
 
         self._raw_docs = await asyncio.to_thread(reader.load_data)
         logger.info("Loaded %d document(s) from %s", len(self._raw_docs), path)

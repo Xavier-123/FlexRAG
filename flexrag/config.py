@@ -111,7 +111,7 @@ class Settings(BaseSettings):
 
     # --- Knowledge base ---
     knowledge_persist_dir: str = Field(
-        default="./knowledge_base",
+        default="./data/knowledge_persist_dir",
         validation_alias="KNOWLEDGE_PERSIST_DIR",
         description="Directory where the FAISS knowledge base is stored",
     )
