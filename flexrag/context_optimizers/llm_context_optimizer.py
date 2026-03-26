@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from flexrag.abstractions.base_context_optimizer import BaseContextOptimizer
 from flexrag.schema import Document
+from flexrag.utils import is_debug
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ class LLMContextOptimizer(BaseContextOptimizer):
                 ]
             )
             optimized: str = response.content  # type: ignore[union-attr]
+            if is_debug():
+                print("LLM context optimization response:\n%s", optimized)
+
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "LLM context optimisation failed (%s); falling back to truncation.",

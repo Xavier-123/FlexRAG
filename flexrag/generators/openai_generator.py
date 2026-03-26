@@ -18,6 +18,8 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.abstractions.base_generator import BaseGenerator
 from flexrag.schema import RAGOutput
+from flexrag.utils import is_debug
+
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,10 @@ class OpenAIGenerator(BaseGenerator):
                     HumanMessage(content=human_prompt),
                 ]
             )
+
+            if is_debug():
+                print("LLM structured output response:\n%s", result)
+
         except Exception as e:
             logger.exception(f"OpenAI generator failed. \n  {e}")
             raise
