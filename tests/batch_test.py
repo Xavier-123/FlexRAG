@@ -7,8 +7,10 @@ from typing import List, Dict
 from langchain_openai import ChatOpenAI
 
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
 from flexrag.pipeline import RAGPipeline
+from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers import LlamaIndexRetriever
 from flexrag.utils import is_debug
@@ -36,10 +38,14 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         base_url=args.llm_base_url,
         temperature=0.0,
     )
+    query_optimizer = LLMQueryOptimizer(llm=llm)
+    context_evaluator = LLMContextEvaluator(llm=llm)
     pipeline = RAGPipeline(
         retriever=retriever,
         reranker=reranker,
         context_optimizer=LLMContextOptimizer(llm=llm),
+        query_optimizer=query_optimizer,
+        context_evaluator=context_evaluator,
         generator=OpenAIGenerator(
             model=args.vllm_llm_model,
             api_key=args.llm_api_key,
@@ -141,6 +147,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--context-max-tokens", type=int, default=4096,
                         help="LLM 的上下文 (Context) 最大 Token 长度限制")
 
+    # --- Agent 参数 ---
+    parser.add_argument("--max-iterations", type=int, default=3, help="最大迭代次数")
+    parser.add_argument("--draw-image-path", type=str, default="./langgraph.png", help="架构图保存路径")
+
     # --- 执行控制参数 ---
     parser.add_argument("--max-concurrent-tasks", type=int, default=5, help="最大并发任务数 (默认: 5)")
 
@@ -155,21 +165,14 @@ if __name__ == "__main__":
     # 解析命令行参数
     args = parse_arguments()
 
-    # 示例的格式数据，请根据你这 1000 条真实 QA 数据做替换加载
-    # mock_qa_data = [
-    #     {"question": f"星曜科技2025年量产的‘幻影’电动车，其搭载的自动驾驶系统是由哪家初创公司开发的？", "answer": "云图智联"},
-    #     {"question": f"作家林清原获得第十五届金笔奖那一年，举办颁奖典礼的所在城市的市长是谁？", "answer": "赵建国"},
-    #     {"question": f"张雪峰是因为什么病去世的？", "answer": "心源性猝死"},
-    # ]
-
     # 数据加载：如果有输入文件，则从文件读取；否则生成 mock 数据
     if args.input_file:
         print(f"Loading data from {args.input_file}...")
         with open(args.input_file, "r", encoding="utf-8") as f:
             if is_debug():
-                qa_data = json.load(f)[:3]
+                qa_data = json.load(f)[:1]
             else:
-                qa_data = json.load(f)[:3]
+                qa_data = json.load(f)[:1]
     else:
         print("No input file provided, using mock data...")
         # 示例的格式数据，请根据你这 1000 条真实 QA 数据做替换加载

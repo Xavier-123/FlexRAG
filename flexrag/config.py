@@ -108,6 +108,11 @@ class Settings(BaseSettings):
         validation_alias="CONTEXT_MAX_TOKENS",
         description="Token budget for the optimised context",
     )
+    max_iterations: int = Field(
+        3,
+        validation_alias="MAX_ITERATIONS",
+        description="Maximum Agentic RAG reflection/retrieval iterations",
+    )
 
     # --- Knowledge base ---
     knowledge_persist_dir: str = Field(

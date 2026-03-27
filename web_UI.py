@@ -5,7 +5,9 @@ import os
 from flexrag import RAGPipeline
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
+from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.knowledge import FaissKnowledgeBuilder
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers import LlamaIndexRetriever
@@ -47,6 +49,8 @@ def init_base_components():
     )
 
     context_optimizer = LLMContextOptimizer(llm=llm)
+    query_optimizer = LLMQueryOptimizer(llm=llm)
+    context_evaluator = LLMContextEvaluator(llm=llm)
 
     generator = OpenAIGenerator(
         model=settings.vllm_llm_model,
@@ -57,6 +61,8 @@ def init_base_components():
     base_components = {
         "reranker": reranker,
         "context_optimizer": context_optimizer,
+        "query_optimizer": query_optimizer,
+        "context_evaluator": context_evaluator,
         "generator": generator,
         "settings": settings
     }
@@ -89,6 +95,8 @@ async def get_or_load_pipeline(kb_name: str) -> RAGPipeline:
         retriever=retriever,
         reranker=base_components["reranker"],
         context_optimizer=base_components["context_optimizer"],
+        query_optimizer=base_components["query_optimizer"],
+        context_evaluator=base_components["context_evaluator"],
         generator=base_components["generator"],
         settings=base_components["settings"],
     )
