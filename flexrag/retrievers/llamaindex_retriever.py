@@ -77,6 +77,7 @@ class VLLMEmbedding(BaseEmbedding):
         base_url: str,
         model: str,
         api_key: str | None = None,
+        embed_batch_size: int = 5,
         http_client: Any | None = None,
         async_http_client: Any | None = None,
         **kwargs: Any,
@@ -97,6 +98,7 @@ class VLLMEmbedding(BaseEmbedding):
         self._api_key = api_key
         self._client = http_client or httpx.Client(timeout=60.0)
         self._aclient = async_http_client or httpx.AsyncClient(timeout=60.0)
+        self.embed_batch_size = embed_batch_size
 
     # ------------------------------------------------------------------
     # 同步方法 (Synchronous Methods)
