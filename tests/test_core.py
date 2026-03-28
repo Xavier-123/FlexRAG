@@ -310,7 +310,7 @@ class TestOpenAIGenerator:
         gen = OpenAIGenerator.__new__(OpenAIGenerator)
         gen._chain = mock_chain
 
-        output = await gen.generate("What is RAG?", "context text", ["doc snippet"])
+        output = await gen.generate("What is RAG?", "context text", ["doc snippet"], ["doc snippet"])
         assert isinstance(output, RAGOutput)
         assert output.answer == "RAG is cool"
         assert output.evidence == ["doc snippet"]
@@ -326,7 +326,7 @@ class TestOpenAIGenerator:
         gen = OpenAIGenerator.__new__(OpenAIGenerator)
         gen._chain = mock_chain
 
-        output = await gen.generate("query", "ctx", ["source doc 1", "source doc 2"])
+        output = await gen.generate("query", "ctx", ["doc snippet"], ["source doc 1", "source doc 2"])
         # Should fall back to source_documents
         assert len(output.evidence) > 0
         assert output.evidence[0] == "source doc 1"

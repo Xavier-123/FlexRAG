@@ -14,6 +14,7 @@ class BaseQueryOptimizer(ABC):
     async def optimize_query(
         self,
         original_query: str,
+        accumulated_context: list[str],
         missing_info: str,
         iteration_count: int,
         previous_query: str = "",

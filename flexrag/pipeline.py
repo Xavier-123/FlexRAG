@@ -214,6 +214,7 @@ class RAGPipeline:
                 "max_iterations": self._settings.max_iterations,
                 "missing_info": "",
                 "missing_info_history": [],
+                "accumulated_context": [],
             }
         )
 

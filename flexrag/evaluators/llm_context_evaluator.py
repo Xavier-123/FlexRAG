@@ -34,10 +34,12 @@ class LLMContextEvaluator(BaseContextEvaluator):
         self,
         original_query: str,
         optimized_context: str,
+        accumulated_context: list[str],
     ) -> ContextEvaluation:
         human_prompt = (
             f"原始问题:\n{original_query}\n\n"
             f"当前上下文:\n{optimized_context}\n\n"
+            f"历史上下文:\n{accumulated_context}\n\n"
             "请输出评估JSON："
         )
         try:
@@ -46,15 +48,26 @@ class LLMContextEvaluator(BaseContextEvaluator):
             )
             payload = str(response.content).strip()  # type: ignore[union-attr]
             data = json.loads(payload)
-            return ContextEvaluation(
-                context_sufficient=bool(data.get("context_sufficient", False)),
-                missing_info=str(data.get("missing_info", "") or ""),
-                judge_reason=str(data.get("judge_reason", "") or ""),
-            )
+            context_sufficient = data.get("context_sufficient", False)
+            if context_sufficient is False:
+                return ContextEvaluation(
+                    context_sufficient=bool(data.get("context_sufficient", False)),
+                    missing_info=str(data.get("missing_info", "") or ""),
+                    judge_reason=str(data.get("judge_reason", "") or ""),
+                    accumulated_context=[optimized_context]
+                )
+            else:
+                return ContextEvaluation(
+                    context_sufficient=bool(data.get("context_sufficient", False)),
+                    missing_info=str(data.get("missing_info", "") or ""),
+                    judge_reason=str(data.get("judge_reason", "") or ""),
+                    accumulated_context=[]
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Context evaluation parse failed (%s); fallback to insufficient.", exc)
             return ContextEvaluation(
                 context_sufficient=False,
                 missing_info="评估输出不可解析，需要补充关键事实并重试检索",
                 judge_reason=f"Evaluator fallback: {exc}",
+                accumulated_context=[]
             )

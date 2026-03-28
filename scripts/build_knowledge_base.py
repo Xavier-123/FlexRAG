@@ -198,12 +198,6 @@ async def build(args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> None:
     """Parse arguments, configure logging, and run the async build pipeline."""
     args = _parse_args(argv)
-
-    logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-    )
-
     asyncio.run(build(args))
 
 

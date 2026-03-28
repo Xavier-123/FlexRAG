@@ -103,3 +103,4 @@ class ContextEvaluation(BaseModel):
         "", description="Missing information summary when context is insufficient"
     )
     judge_reason: str = Field("", description="Short rationale for the judgement")
+    accumulated_context: list[str] = Field([""], description="迭代中积累的上下文信息")

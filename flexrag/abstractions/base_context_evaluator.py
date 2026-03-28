@@ -17,5 +17,6 @@ class BaseContextEvaluator(ABC):
         self,
         original_query: str,
         optimized_context: str,
+        accumulated_context: list[str],
     ) -> ContextEvaluation:
         """Evaluate if current context is sufficient for final answer generation."""

@@ -31,6 +31,7 @@ class LLMQueryOptimizer(BaseQueryOptimizer):
         self,
         original_query: str,
         missing_info: str,
+        accumulated_context: list[str],
         iteration_count: int,
         previous_query: str = "",
     ) -> str:
@@ -38,6 +39,7 @@ class LLMQueryOptimizer(BaseQueryOptimizer):
             f"原始问题: {original_query}\n"
             f"当前迭代: {iteration_count}\n"
             f"上轮检索查询: {previous_query or '无'}\n"
+            f"已有信息: {accumulated_context or '无'}\n\n"
             f"缺失信息: {missing_info or '无'}\n\n"
             "请输出新的检索查询："
         )
@@ -46,6 +48,7 @@ class LLMQueryOptimizer(BaseQueryOptimizer):
                 [SystemMessage(content=_SYSTEM_PROMPT_ZH), HumanMessage(content=human_prompt)]
             )
             content = str(response.content).strip()  # type: ignore[union-attr]
+            logger.debug("Query optimization response: %s", content)
             return " ".join(content.splitlines()).strip()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Query optimization failed (%s); fallback to original query.", exc)

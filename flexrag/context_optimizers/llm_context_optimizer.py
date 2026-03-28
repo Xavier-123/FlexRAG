@@ -19,7 +19,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from flexrag.abstractions.base_context_optimizer import BaseContextOptimizer
 from flexrag.schema import Document
-from flexrag.utils import is_debug
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +77,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
         self,
         query: str,
         documents: list[Document],
+        accumulated_context: list[str],
         max_tokens: int,
     ) -> str:
         """Extract relevant passages from *documents* using the LLM.
@@ -86,6 +86,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
             query: The user's original question.
             documents: Reranked documents to distil.
             max_tokens: Approximate token budget for the output context.
+            accumulated_context: 历史检索的有用信息
 
         Returns:
             A compact, relevant context string ready to be included in the
@@ -101,6 +102,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
         human_msg = (
             f"Question: {query}\n\n"
             f"Documents:\n{doc_listing}\n\n"
+            f"history context:\n{accumulated_context}\n\n"
             "提取相关段落。"
         )
 
@@ -112,8 +114,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
                 ]
             )
             optimized: str = response.content  # type: ignore[union-attr]
-            if is_debug():
-                print("LLM context optimization response:\n%s", optimized)
+            logger.debug(f"LLM context optimization response:\n{optimized}")
 
         except Exception as exc:  # noqa: BLE001
             logger.warning(

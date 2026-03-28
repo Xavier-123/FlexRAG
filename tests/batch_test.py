@@ -2,10 +2,14 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 import time
+import logging
 from typing import List, Dict
 from langchain_openai import ChatOpenAI
 
+from flexrag.config import Settings
+from flexrag.logging_config import setup_logging
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
 from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
@@ -13,7 +17,10 @@ from flexrag.pipeline import RAGPipeline
 from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers import LlamaIndexRetriever
-from flexrag.utils import is_debug
+
+
+def is_debug():
+    return sys.gettrace() is not None
 
 
 # 1. 组装并初始化 Pipeline
@@ -88,14 +95,14 @@ async def process_single_qa(
 
 # 3. 运行主控函数
 async def run_batch_test(qa_data: List[Dict], args: argparse.Namespace):
-    print(f"Initializing pipeline...")
+    logger.info(f"Initializing pipeline...")
     pipeline = await setup_pipeline(args)
 
     # 限制最大并发数，保护 vLLM 或外部 API 服务
     max_concurrent = args.max_concurrent_tasks
     semaphore = asyncio.Semaphore(max_concurrent)
 
-    print(f"Starting batch execution of {len(qa_data)} questions with concurrency {max_concurrent}...")
+    logger.info(f"Starting batch execution of {len(qa_data)} questions with concurrency {max_concurrent}...")
     start_time = time.time()
 
     # 创建所有的并发任务
@@ -108,7 +115,7 @@ async def run_batch_test(qa_data: List[Dict], args: argparse.Namespace):
     results = await asyncio.gather(*tasks)
 
     elapsed = time.time() - start_time
-    print(f"Batch execution completed in {elapsed:.2f} seconds.")
+    logger.info(f"Batch execution completed in {elapsed:.2f} seconds.")
 
     # 将结果持久化为 JSON 文件供后续人工/程序评估
     output_dir = os.path.dirname(args.output_file)
@@ -116,7 +123,7 @@ async def run_batch_test(qa_data: List[Dict], args: argparse.Namespace):
         os.makedirs(output_dir, exist_ok=True)
     with open(args.output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    print("Results saved to eval_results.json")
+    logger.info("Results saved to eval_results.json")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -162,19 +169,24 @@ def parse_arguments() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    # 日志设置
+    settings = Settings()
+    setup_logging(settings.log_level, settings.log_format)
+    logger = logging.getLogger(__name__)
+
     # 解析命令行参数
     args = parse_arguments()
 
     # 数据加载：如果有输入文件，则从文件读取；否则生成 mock 数据
     if args.input_file:
-        print(f"Loading data from {args.input_file}...")
+        logger.info(f"Loading data from {args.input_file}...")
         with open(args.input_file, "r", encoding="utf-8") as f:
             if is_debug():
                 qa_data = json.load(f)[:1]
             else:
                 qa_data = json.load(f)[:1]
     else:
-        print("No input file provided, using mock data...")
+        logger.info("No input file provided, using mock data...")
         # 示例的格式数据，请根据你这 1000 条真实 QA 数据做替换加载
         qa_data = [
             {"question": f"Question {i}", "answer": f"Expected Answer {i}"}

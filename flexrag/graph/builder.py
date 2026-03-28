@@ -4,16 +4,6 @@ LangGraph graph builder for FlexRAG.
 This module assembles the five-node StateGraph from the individual node
 factories defined in :mod:`flexrag.graph.nodes`.
 
-Graph topology::
-
-    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────────────┐     ┌──────────┐
-    │  START   │────►│ retrieve │────►│  rerank  │────►│ optimize_context │────►│ generate │
-    └──────────┘     └──────────┘     └──────────┘     └──────────────────┘     └────┬─────┘
-                                                                                       │
-                                                                                  ┌────▼─────┐
-                                                                                  │   END    │
-                                                                                  └──────────┘
-
 Conditional error routing::
 
     Any node may write ``state["error"]`` on failure.  The next node in the
@@ -23,8 +13,8 @@ Conditional error routing::
 from __future__ import annotations
 
 import logging
-from typing import Any, Literal, Optional
-
+import operator
+from typing import Any, Literal, Optional, Annotated
 from langgraph.graph import END, START, StateGraph
 
 from flexrag.abstractions.base_context_optimizer import BaseContextOptimizer
@@ -74,7 +64,8 @@ class _GraphState(TypedDict, total=False):
     judge_reason: str
     retrieved_docs: list[dict[str, Any]]
     reranked_docs: list[dict[str, Any]]
-    optimized_context: str
+    optimized_context: str    # 当前这一轮提取的上下文
+    accumulated_context: Annotated[list[str], operator.add]  # 记录所有迭代轮次中积累的“已有 Context”
     answer: str
     evidence: list[str]
     error: str | None
