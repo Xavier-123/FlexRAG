@@ -3,14 +3,14 @@ import asyncio
 import os
 
 from flexrag import RAGPipeline
-from flexrag.config import Settings
-from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
-from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
-from flexrag.generators.openai_generator import OpenAIGenerator
-from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
-from flexrag.knowledge import FaissKnowledgeBuilder
-from flexrag.rerankers.vllm_reranker import VLLMReranker
-from flexrag.retrievers import LlamaIndexRetriever
+from flexrag.core.config import Settings
+from flexrag.components.post_retrieval.llm_context_optimizer import LLMContextOptimizer
+from flexrag.components.judges.llm_context_evaluator import LLMContextEvaluator
+from flexrag.components.generation.openai_generator import OpenAIGenerator
+from flexrag.components.query_transform.llm_query_optimizer import LLMQueryOptimizer
+from flexrag.indexing.knowledge import FaissKnowledgeBuilder
+from flexrag.components.post_retrieval.vllm_reranker import VLLMReranker
+from flexrag.components.retrieval import LlamaIndexRetriever
 from langchain_openai import ChatOpenAI
 
 # ================== 全局配置与缓存 ==================
