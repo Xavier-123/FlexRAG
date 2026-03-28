@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import operator
 from typing import Any, Literal, Optional, Annotated
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
 from flexrag.abstractions.base_context_optimizer import BaseContextOptimizer
@@ -69,6 +70,9 @@ class _GraphState(TypedDict, total=False):
     answer: str
     evidence: list[str]
     error: str | None
+    # Execution trace: each node appends one record so the full execution path
+    # can be reconstructed from a saved checkpoint.
+    node_trace: Annotated[list[dict[str, Any]], operator.add]
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +90,8 @@ def build_rag_graph(
     top_k_retrieval: int = 10,
     top_k_rerank: int = 5,
     context_max_tokens: int = 3000,
-    draw_image_path: Optional[str] = None
+    draw_image_path: Optional[str] = None,
+    checkpointer: Optional[BaseCheckpointSaver] = None,
 ) -> Any:
     """Assemble and compile the FlexRAG LangGraph StateGraph.
 
@@ -107,6 +112,12 @@ def build_rag_graph(
         top_k_rerank: Number of documents to keep after reranking.
         context_max_tokens: Token budget for the context window.
         draw_image_path: 如果提供此路径（如 'architecture.png'），则将架构图保存到本地。
+        checkpointer: Optional LangGraph checkpoint saver.  When provided,
+            the graph persists a state snapshot after every node execution,
+            enabling full execution-trace replay and audit.  Pass an instance
+            of :class:`~langgraph.checkpoint.sqlite.SqliteSaver` (or any other
+            :class:`~langgraph.checkpoint.base.BaseCheckpointSaver`) to enable
+            persistence.  ``None`` disables checkpointing (default behaviour).
 
     Returns:
         A compiled LangGraph :class:`~langgraph.graph.CompiledGraph` ready
@@ -171,7 +182,7 @@ def build_rag_graph(
     graph.add_edge("generate", END)
 
     logger.debug("Agentic RAG graph compiled with %d nodes", 7)
-    compiled_graph = graph.compile()
+    compiled_graph = graph.compile(checkpointer=checkpointer)
 
     # 绘制并保存架构图
     if draw_image_path:

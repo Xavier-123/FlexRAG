@@ -64,9 +64,11 @@ def make_query_optimizer_node(
                 iteration_count=iteration_count,
                 previous_query=previous_query,
             )
+            optimized = current_query or original_query
             return {
                 "original_query": original_query,
-                "current_query": current_query or original_query,
+                "current_query": optimized,
+                "node_trace": [{"node": "query_optimizer", "iteration": iteration_count, "input_query": original_query, "output_query": optimized}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[query_optimizer] failed: %s", exc)
@@ -103,7 +105,10 @@ def make_retrieve_node(
         logger.info("[retrieve] query=%r  top_k=%d", query, top_k)
         try:
             docs: list[Document] = await retriever.retrieve(query, top_k=top_k)
-            return {"retrieved_docs": [d.model_dump() for d in docs]}
+            return {
+                "retrieved_docs": [d.model_dump() for d in docs],
+                "node_trace": [{"node": "retrieve", "query": query, "docs_retrieved": len(docs)}],
+            }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)
             return {"error": f"Retrieval failed: {exc}"}
@@ -145,7 +150,10 @@ def make_rerank_node(
             reranked: list[Document] = await reranker.rerank(
                 query, documents, top_k=top_k
             )
-            return {"reranked_docs": [d.model_dump() for d in reranked]}
+            return {
+                "reranked_docs": [d.model_dump() for d in reranked],
+                "node_trace": [{"node": "rerank", "docs_in": len(documents), "docs_out": len(reranked)}],
+            }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[rerank] failed: %s", exc)
             return {"error": f"Reranking failed: {exc}"}
@@ -186,7 +194,10 @@ def make_optimize_context_node(
         logger.info("[optimize_context] %d docs  max_tokens=%d", len(documents), max_tokens)
         try:
             context: str = await optimizer.optimize(query, documents, accumulated_context, max_tokens=max_tokens)
-            return {"optimized_context": context}
+            return {
+                "optimized_context": context,
+                "node_trace": [{"node": "optimize_context", "docs_in": len(documents), "context_len": len(context)}],
+            }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[optimize_context] failed: %s", exc)
             return {"error": f"Context optimisation failed: {exc}"}
@@ -225,7 +236,11 @@ def make_generate_node(generator: BaseGenerator) -> Any:
         logger.info("[generate] query=%r  context_len=%d", query, len(context))
         try:
             output = await generator.generate(query, context, accumulated_context, source_texts)
-            return {"answer": output.answer, "evidence": output.evidence}
+            return {
+                "answer": output.answer,
+                "evidence": output.evidence,
+                "node_trace": [{"node": "generate", "query": query, "answer_len": len(output.answer), "evidence_count": len(output.evidence)}],
+            }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[generate] failed: %s", exc)
             return {"error": f"Generation failed: {exc}"}
@@ -251,6 +266,7 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
                 "missing_info": result.missing_info,
                 "judge_reason": result.judge_reason,
                 "accumulated_context": result.accumulated_context,
+                "node_trace": [{"node": "context_evaluator", "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[context_evaluator] failed: %s", exc)
@@ -274,6 +290,7 @@ def make_analyze_missing_info_node() -> Any:
         return {
             "iteration_count": iteration_count,
             "missing_info_history": history,
+            "node_trace": [{"node": "analyze_missing_info", "iteration_count": iteration_count, "missing_info": missing_info}],
         }
 
     return analyze_missing_info_node

@@ -79,6 +79,10 @@ class RAGState(BaseModel):
         description="Source snippets used to generate the answer",
     )
     error: str | None = Field(None, description="Error message if a node failed")
+    node_trace: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Ordered list of per-node execution records for audit and replay",
+    )
 
 
 class RAGOutput(BaseModel):
@@ -87,10 +91,15 @@ class RAGOutput(BaseModel):
     Attributes:
         answer: The final answer to the user's query.
         evidence: List of source document excerpts that support the answer.
+        thread_id: The checkpoint thread identifier for this run.  Use it to
+            retrieve the full execution trace from the checkpoint store via
+            :class:`~flexrag.tracing.CheckpointReader`.  Empty string when
+            checkpointing is disabled.
     """
 
     answer: str = Field(..., description="The final generated answer")
     evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
+    thread_id: str = Field("", description="Checkpoint thread ID; empty when checkpointing is disabled")
 
 
 class ContextEvaluation(BaseModel):
