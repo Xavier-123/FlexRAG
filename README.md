@@ -26,46 +26,7 @@
 
 ## 系统架构
 
-```
-                ┌──────────────────────────────────┐
-                │      知识库构建流水线             │
-                │                                  │
-                │  load_files()  ──►  build_index()│
-                │       │                   │      │
-                │  .txt/.md/.pdf    FAISS + vLLM   │
-                │                   embeddings     │
-                │                       │          │
-                │                   save()         │
-                └───────────────────────┬──────────┘
-                                        │  persist_dir
-                                        ▼
-                              faiss_index.bin  +
-                              docstore.json  + ...
-
-                ┌──────────────────────────────────────────────────┐
-                │           Agentic RAG 查询流水线（7 节点）        │
-                │                                                  │
-  用户提问 ────►│  [Query Optimizer]  LLM 优化检索查询             │
-                │         │                                        │
-                │  [Retrieve]    LlamaIndex FAISS 检索             │
-                │         │                                        │
-                │  [Rerank]      vLLM cross-encoder 重排           │
-                │         │                                        │
-                │  [Optimize Context]  LLM 上下文过滤压缩          │
-                │         │                                        │
-                │  [Context Evaluator]  LLM 判断信息是否充分        │
-                │         │                                        │
-                │    sufficient? ──Yes──►  [Generate]              │
-                │         │                    │                   │
-                │         No                   ▼                   │
-                │         ▼               RAGOutput                │
-                │  [Analyse Missing Info]  记录缺失信息 + 迭代+1    │
-                │         │                                        │
-                │  iteration < MAX? ──Yes──► [Query Optimizer] ◄──┘│
-                │         │                                        │
-                │         No ──────────────► [Generate]            │
-                └──────────────────────────────────────────────────┘
-```
+![langgraph](E:\LLM\6-RAG\cursor\FlexRAG\tests\langgraph.png)
 
 ---
 
@@ -227,7 +188,24 @@ Option [b/d/q]:
 
 ### 方式二：Gradio Web UI
 
-```bash
+#### 构建知识库
+
+```shell
+python scripts/build_knowledge_base.py \
+--input-dir ./data/knowledge_files_dir/hotpotqa/ \
+--output-dir ./data/knowledge_persist_dir/hotpotqa/ \
+--chunk-size 1024 \
+--chunk-overlap 50 \
+--embedding-base-url http://127.0.0.1:19002/v1/embeddings \
+--embedding-api-key sk-1234567890 \
+--embedding-model Qwen3-Embedding-0.6B \
+--force \
+--verbose
+```
+
+#### 启动页面
+
+```shell
 python web_UI.py
 ```
 
