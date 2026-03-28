@@ -1,34 +1,32 @@
 # FlexRAG
 
-A modular, enterprise-grade **Retrieval-Augmented Generation** (RAG) system
-built on **LangGraph** and **LlamaIndex**.
+**FlexRAG** 是一个基于 **LangGraph** 和 **LlamaIndex** 构建的模块化、企业级**检索增强生成（RAG）**系统。
 
-FlexRAG ships with a full **knowledge-base construction pipeline** – load
-local files, chunk them, embed them with a vLLM model, and persist a FAISS
-vector index to disk.  On next startup, the index is restored automatically
-so your documents are always ready to query.
+系统内置完整的**知识库构建流水线**——从本地文件加载、分块、使用 vLLM 模型向量化，到持久化 FAISS 索引到磁盘。下次启动时自动恢复索引，让文档随时可查。FlexRAG 还提供了 **Gradio Web UI**，支持多知识库动态切换，以及完整的**评估模块**，涵盖 EM、F1 和 Recall@k 等指标。
 
 ---
 
-## Features
+## 功能亮点
 
-| Feature | Detail |
+| 功能 | 说明 |
 |---|---|
-| **Persistent FAISS knowledge base** | Build once from `.txt` / `.md` / `.pdf` files, reload on demand |
-| **Configurable chunking** | `chunk_size` and `chunk_overlap` settable via env vars or code |
-| **vLLM embeddings** | Any OpenAI-compatible embedding endpoint (local or remote) |
-| **Four-stage RAG graph** | Retrieve → Rerank → Optimise Context → Generate |
-| **Structured output** | Every answer is a validated `RAGOutput(answer, evidence)` Pydantic model |
-| **Strategy pattern** | Every component is backed by an ABC; swap any stage without touching the rest |
-| **Interactive Q&A loop** | `main.py` detects or builds the knowledge base, then drops into a REPL |
+| **持久化 FAISS 知识库** | 一次构建，多次复用；支持 `.txt` / `.md` / `.pdf` 文件 |
+| **可配置分块策略** | `chunk_size` 与 `chunk_overlap` 可通过环境变量或代码设定 |
+| **vLLM 向量化与重排序** | 对接任意 OpenAI 兼容嵌入端点（本地或远程）及 vLLM cross-encoder |
+| **四阶段 RAG 图** | Retrieve → Rerank → Optimise Context → Generate |
+| **结构化输出** | 每条答案均为经 Pydantic 校验的 `RAGOutput(answer, evidence)` 对象 |
+| **策略模式** | 每个组件都有 ABC 抽象基类，随意替换任一阶段而不影响其余组件 |
+| **Gradio Web UI** | 支持多知识库（HotpotQA / 2WikiMultihopQA / MuSiQue / NQ）动态无缝切换 |
+| **评估模块** | 内置 EM、Char-F1、Recall@k 等指标，支持离线批量评估 |
+| **交互式命令行** | `main.py` 自动检测或构建知识库，进入交互式问答循环 |
 
 ---
 
-## Architecture
+## 系统架构
 
 ```
                 ┌──────────────────────────────────┐
-                │   Knowledge Base Pipeline        │
+                │      知识库构建流水线             │
                 │                                  │
                 │  load_files()  ──►  build_index()│
                 │       │                   │      │
@@ -42,17 +40,17 @@ so your documents are always ready to query.
                               faiss_index.bin  +
                               docstore.json  + ...
 
-                ┌─────────────────────────────────┐
-                │   RAG Query Pipeline            │
-                │                                 │
-  User query ──►│  [Retrieve]  LlamaIndex FAISS   │
-                │       │                         │
-                │  [Rerank]    vLLM cross-encoder │
-                │       │                         │
-                │  [Optimise]  LLM context filter │
-                │       │                         │
-                │  [Generate]  LLM structured out │
-                └───────┬─────────────────────────┘
+                ┌─────────────────────────────────────┐
+                │         RAG 查询流水线              │
+                │                                     │
+  用户提问 ────►│  [Retrieve]  LlamaIndex FAISS 检索  │
+                │       │                             │
+                │  [Rerank]    vLLM cross-encoder 重排│
+                │       │                             │
+                │  [Optimise]  LLM 上下文过滤压缩     │
+                │       │                             │
+                │  [Generate]  LLM 结构化输出生成     │
+                └───────┬─────────────────────────────┘
                         │
                     RAGOutput
                  { answer, evidence }
@@ -60,78 +58,92 @@ so your documents are always ready to query.
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```
 FlexRAG/
-├── main.py                              # Interactive Q&A entry point
-├── requirements.txt                     # Python dependencies
+├── main.py                              # 命令行交互式问答入口
+├── web_UI.py                            # Gradio Web UI（多知识库切换）
+├── requirements.txt                     # Python 依赖
+├── scripts/
+│   ├── build_knowledge_base.py          # 独立知识库构建脚本（含 CLI 参数）
+│   └── eval_rag.py                      # RAG 评估脚本（读取 eval_results.json）
 └── flexrag/
-    ├── __init__.py                      # Package root (exports RAGPipeline)
-    ├── config.py                        # Pydantic Settings (env vars / .env)
-    ├── schema.py                        # Document, RAGState, RAGOutput models
-    ├── pipeline.py                      # RAGPipeline – high-level orchestrator
-    ├── abstractions/                    # Abstract base classes (Strategy Pattern)
+    ├── __init__.py                      # 包入口（导出 RAGPipeline）
+    ├── config.py                        # Pydantic Settings（读取环境变量 / .env）
+    ├── schema.py                        # Document、RAGState、RAGOutput 数据模型
+    ├── pipeline.py                      # RAGPipeline 高层编排器
+    ├── utils.py                         # 通用工具函数
+    ├── abstractions/                    # 抽象基类（策略模式）
     │   ├── base_retriever.py
     │   ├── base_reranker.py
     │   ├── base_context_optimizer.py
     │   ├── base_generator.py
-    │   └── base_knowledge.py           ← knowledge builder ABC
-    ├── knowledge/                       ← knowledge builder package
+    │   └── base_knowledge.py
+    ├── knowledge/                       # 知识库构建模块
     │   ├── __init__.py
-    │   └── faiss_knowledge.py          ← FAISS + LlamaIndex builder
+    │   └── faiss_knowledge.py           # FAISS + LlamaIndex 知识库构建器
     ├── retrievers/
-    │   └── llamaindex_retriever.py      # LlamaIndex VectorStoreIndex + vLLM
+    │   └── llamaindex_retriever.py      # LlamaIndex VectorStoreIndex 检索器
     ├── rerankers/
-    │   └── vllm_reranker.py             # vLLM cross-encoder reranker
+    │   └── vllm_reranker.py             # vLLM cross-encoder 重排序器
     ├── context_optimizers/
-    │   └── llm_context_optimizer.py     # LLM-based context extractor
+    │   └── llm_context_optimizer.py     # 基于 LLM 的上下文提取优化器
     ├── generators/
-    │   └── openai_generator.py          # Structured output generator
-    └── graph/
-        ├── nodes.py                     # LangGraph node factories
-        └── builder.py                   # StateGraph assembly & compilation
+    │   └── openai_generator.py          # 结构化输出生成器
+    ├── graph/
+    │   ├── nodes.py                     # LangGraph 节点工厂
+    │   └── builder.py                   # StateGraph 组装与编译
+    └── evaluate/                        # 评估模块
+        ├── metrics/
+        │   ├── base.py                  # BaseMetric 抽象类
+        │   ├── em.py                    # Exact Match 指标
+        │   ├── f1.py                    # Char-F1 指标
+        │   └── recall_k.py             # Recall@k 指标
+        └── utils/
+            └── eval_utils.py           # 答案归一化等工具函数
 ```
 
 ---
 
-## Tech Stack
+## 技术栈
 
-| Layer | Technology |
+| 层次 | 技术 |
 |---|---|
-| Graph orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) |
-| LLM & generation | OpenAI-compatible API via [langchain-openai](https://pypi.org/project/langchain-openai/) |
-| Retrieval & file loading | [LlamaIndex](https://www.llamaindex.ai/) (`SimpleDirectoryReader`, `SentenceSplitter`, `VectorStoreIndex`) |
-| Vector store | [FAISS](https://github.com/facebookresearch/faiss) via `llama-index-vector-stores-faiss` |
-| Embeddings & reranking | vLLM remote API (OpenAI-compatible) |
-| PDF parsing | [pypdf](https://pypi.org/project/pypdf/) |
-| Data validation | [Pydantic v2](https://docs.pydantic.dev/) |
-| Configuration | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |
+| 图编排 | [LangGraph](https://github.com/langchain-ai/langgraph) |
+| LLM 调用 | OpenAI 兼容 API，通过 [langchain-openai](https://pypi.org/project/langchain-openai/) |
+| 检索与文件读取 | [LlamaIndex](https://www.llamaindex.ai/)（`SimpleDirectoryReader`、`SentenceSplitter`、`VectorStoreIndex`） |
+| 向量存储 | [FAISS](https://github.com/facebookresearch/faiss)，通过 `llama-index-vector-stores-faiss` |
+| 向量化与重排序 | vLLM 远程 API（OpenAI 兼容） |
+| PDF 解析 | [pypdf](https://pypi.org/project/pypdf/) |
+| Web UI | [Gradio](https://www.gradio.app/) |
+| 数据校验 | [Pydantic v2](https://docs.pydantic.dev/) |
+| 配置管理 | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |
+| HTTP 客户端 | [httpx](https://www.python-httpx.org/)（异步） |
 
 ---
 
-## Installation
+## 安装
 
-### 1. Clone the repository
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/Xavier-123/FlexRAG.git
 cd FlexRAG
 ```
 
-### 2. Install dependencies
+### 2. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Note** – `faiss-cpu` requires a CPU build of FAISS.  If you have a GPU
-> and want maximum performance, replace it with `faiss-gpu` in
-> `requirements.txt` before installing.
+> **注意** — `faiss-cpu` 为 CPU 版本。若需 GPU 加速，请在 `requirements.txt`
+> 中将其替换为 `faiss-gpu` 后再安装。
 
-### 3. Configure environment
+### 3. 配置环境变量
 
-Create a `.env` file (or export the variables) in the project root:
+在项目根目录创建 `.env` 文件（或直接导出环境变量）：
 
 ```dotenv
 # --- LLM ---
@@ -140,7 +152,7 @@ LLM_API_KEY=sk-...
 VLLM_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
 
 # --- Embedding ---
-EMBEDDING_BASE_URL=http://localhost:8001/v1/embeddings
+EMBEDDING_BASE_URL=http://localhost:8001/v1
 EMBEDDING_API_KEY=sk-...
 VLLM_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
 
@@ -149,12 +161,12 @@ RERANKER_BASE_URL=http://localhost:8002/v1
 RERANKER_API_KEY=sk-...
 VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
-# --- Knowledge base (optional – shown with defaults) ---
-KNOWLEDGE_PERSIST_DIR=./knowledge_base
+# --- 知识库（可选，括号内为默认值）---
+KNOWLEDGE_PERSIST_DIR=./data/knowledge_persist_dir
 KNOWLEDGE_CHUNK_SIZE=512
 KNOWLEDGE_CHUNK_OVERLAP=50
 
-# --- Pipeline hyper-params (optional) ---
+# --- Pipeline 超参数（可选）---
 TOP_K_RETRIEVAL=10
 TOP_K_RERANK=5
 CONTEXT_MAX_TOKENS=3000
@@ -162,97 +174,18 @@ CONTEXT_MAX_TOKENS=3000
 
 ---
 
-## Quick Start
+## 快速开始
 
-### Build a knowledge base from your documents
-
-```python
-from flexrag.config import Settings
-from flexrag.knowledge import FaissKnowledgeBuilder
-
-settings = Settings()
-
-builder = FaissKnowledgeBuilder(
-    embed_base_url=settings.embedding_base_url,
-    embed_model_name=settings.vllm_embedding_model,
-    embed_api_key=settings.embedding_api_key,
-)
-
-# Load all .txt / .md / .pdf files from a directory
-builder.load_files("./my_documents")
-
-# Chunk and embed (uses settings for chunk_size / chunk_overlap)
-builder.build_index(
-    chunk_size=settings.knowledge_chunk_size,
-    chunk_overlap=settings.knowledge_chunk_overlap,
-)
-
-# Persist to disk
-builder.save(settings.knowledge_persist_dir)
-print("Knowledge base built and saved.")
-```
-
-### Load an existing knowledge base and run Q&A
-
-```python
-from flexrag.config import Settings
-from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
-from flexrag.generators.openai_generator import OpenAIGenerator
-from flexrag.pipeline import RAGPipeline
-from flexrag.rerankers.vllm_reranker import VLLMReranker
-from flexrag.retrievers import LlamaIndexRetriever
-from langchain_openai import ChatOpenAI
-
-settings = Settings()
-
-# Load persisted index into a retriever
-retriever = LlamaIndexRetriever(
-    index=None,
-    embed_base_url=settings.embedding_base_url,
-    embed_model_name=settings.vllm_embedding_model,
-    embed_api_key=settings.embedding_api_key,
-)
-retriever.load_index(settings.knowledge_persist_dir)
-
-# Build the full pipeline with the retriever
-reranker = VLLMReranker(
-    base_url=settings.reranker_base_url,
-    model=settings.vllm_reranker_model,
-    api_key=settings.reranker_api_key,
-)
-llm = ChatOpenAI(
-    model=settings.vllm_llm_model,
-    api_key=settings.llm_api_key,
-    base_url=settings.llm_base_url,
-    temperature=0.0,
-)
-pipeline = RAGPipeline(
-    retriever=retriever,
-    reranker=reranker,
-    context_optimizer=LLMContextOptimizer(llm=llm),
-    generator=OpenAIGenerator(
-        model=settings.vllm_llm_model,
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-    ),
-    settings=settings,
-)
-
-output = pipeline.run("What is Retrieval-Augmented Generation?")
-print(output.answer)
-print(output.evidence)
-```
-
-### Run the interactive entry point
+### 方式一：命令行交互式问答
 
 ```bash
 python main.py
 ```
 
-On first run you will see:
+首次运行时会提示：
 
 ```
-[INFO] No knowledge base found at './knowledge_base'.
+[INFO] No knowledge base found at './data/knowledge_persist_dir'.
 
 Choose an option:
   b  -- Build from a local directory of documents
@@ -262,68 +195,228 @@ Choose an option:
 Option [b/d/q]:
 ```
 
-* Enter **`b`** and provide a directory path to index your own documents.
-* Enter **`d`** to spin up instantly with five built-in demo paragraphs.
+- 输入 **`b`**，然后指定文档目录路径，自动完成分块、向量化、保存。
+- 输入 **`d`**，使用内置的 5 段演示文本即刻体验，无需外部文件。
 
-On subsequent runs the saved index is loaded automatically and the Q&A loop
-starts immediately.
+后续运行会自动加载已保存的索引，直接进入问答循环。
 
 ---
 
-## Extending FlexRAG
+### 方式二：Gradio Web UI
 
-Every component exposes a thin ABC.  To swap a stage:
+```bash
+python web_UI.py
+```
 
-1. Subclass the appropriate abstract class in `flexrag/abstractions/`.
-2. Implement the single required method.
-3. Pass your implementation to `RAGPipeline(...)`.
+启动后访问 `http://0.0.0.0:7860`，支持从下拉框切换以下知识库：
+
+| 知识库名称 | 本地路径 |
+|---|---|
+| `hotpotqa` | `./data/knowledge_persist_dir/hotpotqa` |
+| `2wikimultihopqa` | `./data/knowledge_persist_dir/2wikimultihopqa` |
+| `musique` | `./data/knowledge_persist_dir/musique` |
+| `nq` | `./data/knowledge_persist_dir/nq` |
+
+首次切换到某个知识库时会自动加载并缓存，后续切换实现秒级响应。每条回答均附带可展开的**参考检索片段**。
+
+---
+
+### 方式三：Python API
+
+#### 构建知识库
+
+```python
+import asyncio
+from flexrag.config import Settings
+from flexrag.knowledge import FaissKnowledgeBuilder
+
+settings = Settings()
+
+async def build():
+    builder = FaissKnowledgeBuilder(
+        embed_base_url=settings.embedding_base_url,
+        embed_model_name=settings.vllm_embedding_model,
+        embed_api_key=settings.embedding_api_key,
+    )
+    await builder.load_files("./my_documents")   # 支持 .txt / .md / .pdf
+    await builder.build_index(
+        chunk_size=settings.knowledge_chunk_size,
+        chunk_overlap=settings.knowledge_chunk_overlap,
+    )
+    await builder.save(settings.knowledge_persist_dir)
+    print("知识库构建完成。")
+
+asyncio.run(build())
+```
+
+#### 加载知识库并运行问答
+
+```python
+import asyncio
+from flexrag.config import Settings
+from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.generators.openai_generator import OpenAIGenerator
+from flexrag.pipeline import RAGPipeline
+from flexrag.rerankers.vllm_reranker import VLLMReranker
+from flexrag.retrievers import LlamaIndexRetriever
+from langchain_openai import ChatOpenAI
+
+async def query():
+    settings = Settings()
+
+    retriever = LlamaIndexRetriever(
+        index=None,
+        embed_base_url=settings.embedding_base_url,
+        embed_model_name=settings.vllm_embedding_model,
+        embed_api_key=settings.embedding_api_key,
+    )
+    await retriever.load_index(settings.knowledge_persist_dir)
+
+    llm = ChatOpenAI(
+        model=settings.vllm_llm_model,
+        api_key=settings.llm_api_key,
+        base_url=settings.llm_base_url,
+        temperature=0.0,
+    )
+    pipeline = RAGPipeline(
+        retriever=retriever,
+        reranker=VLLMReranker(
+            base_url=settings.reranker_base_url,
+            model=settings.vllm_reranker_model,
+            api_key=settings.reranker_api_key,
+        ),
+        context_optimizer=LLMContextOptimizer(llm=llm),
+        generator=OpenAIGenerator(
+            model=settings.vllm_llm_model,
+            api_key=settings.llm_api_key,
+            base_url=settings.llm_base_url,
+        ),
+        settings=settings,
+    )
+
+    output = await pipeline.arun("什么是检索增强生成？")
+    print(output.answer)
+    print(output.evidence)
+
+asyncio.run(query())
+```
+
+> **提示** — 在同步环境中也可以使用 `pipeline.run(query)` 作为便捷封装，
+> 其内部调用 `asyncio.run()`，**不能**在已有事件循环中使用。
+
+---
+
+## 脚本工具
+
+### 知识库构建脚本
+
+```bash
+# 从目录构建
+python scripts/build_knowledge_base.py --input-dir ./my_docs
+
+# 从指定文件构建
+python scripts/build_knowledge_base.py --files doc1.txt doc2.pdf
+
+# 自定义输出目录和分块参数
+python scripts/build_knowledge_base.py --input-dir ./my_docs \
+    --output-dir ./my_index --chunk-size 256 --chunk-overlap 32
+
+# 强制覆盖已有索引
+python scripts/build_knowledge_base.py --input-dir ./my_docs --force
+
+# 查看所有参数
+python scripts/build_knowledge_base.py --help
+```
+
+### RAG 评估脚本
+
+先准备一个 `eval_results.json`，格式为 JSON 数组，每项包含：
+
+```json
+[
+  {
+    "question": "问题文本",
+    "expected": "参考答案",
+    "generated_answer": "模型生成的答案",
+    "evidence": ["检索片段1", "检索片段2"]
+  }
+]
+```
+
+然后运行：
+
+```bash
+python scripts/eval_rag.py --input eval_results.json --k_list 1,5,10,20
+```
+
+输出示例：
+
+```
+overall scores:
+  EM:       {'ExactMatch': 0.42}
+  F1:       {'CharF1': 0.61}
+  Recall@k: {'Recall@1': 0.35, 'Recall@5': 0.58, 'Recall@10': 0.71, 'Recall@20': 0.83}
+```
+
+---
+
+## 扩展 FlexRAG
+
+每个组件均有对应的抽象基类，位于 `flexrag/abstractions/`。替换某一阶段只需：
+
+1. 继承对应的抽象基类。
+2. 实现所需的抽象方法（均为 `async def`）。
+3. 将自定义实现传入 `RAGPipeline(...)`。
+
+**示例：自定义重排序器**
 
 ```python
 from flexrag.abstractions import BaseReranker
 from flexrag.schema import Document
 
 class MyReranker(BaseReranker):
-    def rerank(self, query: str, documents: list[Document], top_k: int) -> list[Document]:
-        # custom scoring logic
+    async def rerank(
+        self, query: str, documents: list[Document], top_k: int
+    ) -> list[Document]:
+        # 自定义评分逻辑（此处以文本长度为例）
         return sorted(documents, key=lambda d: len(d.text), reverse=True)[:top_k]
 ```
 
-Similarly, to build a custom knowledge backend subclass `BaseKnowledgeBuilder`
-and implement `load_files`, `build_index`, `save`, and `index_exists`.
+**示例：自定义知识库后端**
+
+继承 `BaseKnowledgeBuilder`，实现 `load_files`、`build_index`、`save` 和 `index_exists` 四个方法即可。
 
 ---
 
-## Running Tests
+## 运行测试
 
 ```bash
-pip install pytest
-pytest tests/ -v
+pip install pytest pytest-asyncio
+python -m pytest tests/ -v
 ```
 
-All tests run fully offline using `unittest.mock` – no running services
-required.
+所有测试均使用 `unittest.mock` 在完全离线的环境中运行，无需任何外部服务。
 
 ---
 
-## Environment Variable Reference
+## 环境变量速查
 
-The table below shows the **built-in defaults** from `flexrag/config.py`.
-Override any value in your `.env` file or via environment variables.
+下表列出 `flexrag/config.py` 中的**内置默认值**。可通过 `.env` 文件或环境变量覆盖任意项。
 
-| Variable | Built-in default | Description |
+| 变量名 | 内置默认值 | 说明 |
 |---|---|---|
-| `LLM_BASE_URL` | `http://localhost:8018/v1` | LLM serving endpoint |
-| `LLM_API_KEY` | `sk-xxxx` | LLM API key |
-| `EMBEDDING_BASE_URL` | `http://localhost:8018/v1` | Embedding serving endpoint |
-| `EMBEDDING_API_KEY` | `sk-xxxx` | Embedding API key |
-| `RERANKER_BASE_URL` | `http://localhost:8018/v1` | Reranker serving endpoint |
-| `RERANKER_API_KEY` | `sk-xxxx` | Reranker API key |
-| `VLLM_LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Chat model name |
-| `VLLM_EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | Embedding model name |
-| `VLLM_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Reranker model name |
-| `KNOWLEDGE_PERSIST_DIR` | `./knowledge_base` | FAISS index storage directory |
-| `KNOWLEDGE_CHUNK_SIZE` | `512` | Max tokens per document chunk |
-| `KNOWLEDGE_CHUNK_OVERLAP` | `50` | Token overlap between chunks |
-| `TOP_K_RETRIEVAL` | `10` | Docs to retrieve before reranking |
-| `TOP_K_RERANK` | `5` | Docs to keep after reranking |
-| `CONTEXT_MAX_TOKENS` | `3000` | Token budget for optimised context |
+| `LLM_BASE_URL` | `http://localhost:8018/v1` | LLM 服务端点 |
+| `LLM_API_KEY` | `sk-xxxx` | LLM API 密钥 |
+| `EMBEDDING_BASE_URL` | `http://localhost:8018/v1` | 向量化服务端点 |
+| `EMBEDDING_API_KEY` | `sk-xxxx` | 向量化 API 密钥 |
+| `RERANKER_BASE_URL` | `http://localhost:8018/v1` | 重排序服务端点 |
+| `RERANKER_API_KEY` | `sk-xxxx` | 重排序 API 密钥 |
+| `VLLM_LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | 对话模型名称 |
+| `VLLM_EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | 向量化模型名称 |
+| `VLLM_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排序模型名称 |
+| `KNOWLEDGE_PERSIST_DIR` | `./data/knowledge_persist_dir` | FAISS 索引存储目录 |
+| `KNOWLEDGE_CHUNK_SIZE` | `512` | 每个文档块的最大 token 数 |
+| `KNOWLEDGE_CHUNK_OVERLAP` | `50` | 相邻块之间的 token 重叠量 |
+| `TOP_K_RETRIEVAL` | `10` | 重排序前检索的文档数量 |
+| `TOP_K_RERANK` | `5` | 重排序后保留的文档数量 |
+| `CONTEXT_MAX_TOKENS` | `3000` | 传给生成器的上下文 token 预算 |
