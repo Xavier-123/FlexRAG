@@ -27,9 +27,8 @@ The endpoint follows the Cohere-compatible rerank API:
 from __future__ import annotations
 
 import logging
-from typing import Any
-
 import httpx
+from typing import Any
 
 from flexrag.abstractions.base_reranker import BaseReranker
 from flexrag.schema import Document
@@ -113,7 +112,7 @@ class VLLMReranker(BaseReranker):
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
-        logger.debug(
+        logger.info(
             "Sending %d documents to reranker endpoint %s",
             len(texts),
             self._endpoint,
@@ -136,5 +135,5 @@ class VLLMReranker(BaseReranker):
         # Sort descending by score and truncate to top_k
         reranked.sort(key=lambda d: d.score, reverse=True)
         selected = reranked[:top_k]
-        logger.debug("Reranked: kept %d / %d documents", len(selected), len(documents))
+        logger.info("Reranked: kept %d / %d documents", len(selected), len(documents))
         return selected

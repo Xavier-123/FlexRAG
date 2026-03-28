@@ -24,6 +24,7 @@ class BaseGenerator(ABC):
         self,
         query: str,
         context: str,
+        accumulated_context: list[str],
         source_documents: list[str],
     ) -> RAGOutput:
         """Generate a structured answer grounded in *context*.

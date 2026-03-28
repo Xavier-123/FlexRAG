@@ -27,8 +27,10 @@ from langchain_openai import ChatOpenAI
 from flexrag.abstractions.base_retriever import BaseRetriever
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
 from flexrag.graph.builder import build_rag_graph
+from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers.llamaindex_retriever import LlamaIndexRetriever
 from flexrag.schema import RAGOutput
@@ -65,6 +67,8 @@ class RAGPipeline:
         retriever: BaseRetriever,
         reranker: VLLMReranker,
         context_optimizer: LLMContextOptimizer,
+        query_optimizer: LLMQueryOptimizer,
+        context_evaluator: LLMContextEvaluator,
         generator: OpenAIGenerator,
         settings: Settings,
     ) -> None:
@@ -75,10 +79,13 @@ class RAGPipeline:
             retriever=retriever,
             reranker=reranker,
             context_optimizer=context_optimizer,
+            query_optimizer=query_optimizer,
+            context_evaluator=context_evaluator,
             generator=generator,
             top_k_retrieval=settings.top_k_retrieval,
             top_k_rerank=settings.top_k_rerank,
             context_max_tokens=settings.context_max_tokens,
+            draw_image_path=settings.draw_image_path,
         )
 
     # ------------------------------------------------------------------
@@ -126,6 +133,8 @@ class RAGPipeline:
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
+        query_optimizer = LLMQueryOptimizer(llm=llm)
+        context_evaluator = LLMContextEvaluator(llm=llm)
 
         # -- Generator (vLLM Structured Output) --
         generator = OpenAIGenerator(
@@ -138,6 +147,8 @@ class RAGPipeline:
             retriever=retriever,
             reranker=reranker,
             context_optimizer=context_optimizer,
+            query_optimizer=query_optimizer,
+            context_evaluator=context_evaluator,
             generator=generator,
             settings=settings,
         )
@@ -194,7 +205,18 @@ class RAGPipeline:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
         logger.info("Pipeline started – query: %r", query)
-        result: dict[str, Any] = await self._graph.ainvoke({"query": query})
+        result: dict[str, Any] = await self._graph.ainvoke(
+            {
+                "query": query,
+                "original_query": query,
+                "current_query": "",
+                "iteration_count": 0,
+                "max_iterations": self._settings.max_iterations,
+                "missing_info": "",
+                "missing_info_history": [],
+                "accumulated_context": [],
+            }
+        )
 
         if error := result.get("error"):
             raise RuntimeError(f"RAG pipeline error: {error}")

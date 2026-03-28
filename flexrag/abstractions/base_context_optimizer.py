@@ -25,6 +25,7 @@ class BaseContextOptimizer(ABC):
         self,
         query: str,
         documents: list[Document],
+        accumulated_context: list[str],
         max_tokens: int,
     ) -> str:
         """Produce an optimised context string from *documents*.

@@ -62,7 +62,9 @@ from langchain_openai import ChatOpenAI
 from flexrag import RAGPipeline
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
+from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.knowledge import FaissKnowledgeBuilder
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers import LlamaIndexRetriever
@@ -185,6 +187,8 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
         temperature=0.0,
     )
     context_optimizer = LLMContextOptimizer(llm=llm)
+    query_optimizer = LLMQueryOptimizer(llm=llm)
+    context_evaluator = LLMContextEvaluator(llm=llm)
     generator = OpenAIGenerator(
         model=settings.vllm_llm_model,
         api_key=settings.llm_api_key,
@@ -194,6 +198,8 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
         retriever=retriever,
         reranker=reranker,
         context_optimizer=context_optimizer,
+        query_optimizer=query_optimizer,
+        context_evaluator=context_evaluator,
         generator=generator,
         settings=settings,
     )

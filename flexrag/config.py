@@ -108,6 +108,21 @@ class Settings(BaseSettings):
         validation_alias="CONTEXT_MAX_TOKENS",
         description="Token budget for the optimised context",
     )
+    max_iterations: int = Field(
+        3,
+        validation_alias="MAX_ITERATIONS",
+        description="Maximum Agentic RAG reflection/retrieval iterations",
+    )
+    log_level: str = Field(
+        "INFO",
+        validation_alias="LOG_LEVEL",
+        description="Global logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL)",
+    )
+    log_format: str = Field(
+        "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+        validation_alias="LOG_FORMAT",
+        description="Global logging format string",
+    )
 
     # --- Knowledge base ---
     knowledge_persist_dir: str = Field(

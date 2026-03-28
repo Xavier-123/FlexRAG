@@ -46,7 +46,24 @@ class RAGState(BaseModel):
         error: Optional error message if a node fails gracefully.
     """
 
-    query: str = Field(..., description="Original user question")
+    query: str = Field(..., description="Original user question (backward compatible)")
+    original_query: str = Field("", description="Original user question (fixed across iterations)")
+    current_query: str = Field("", description="Current iteration query used for retrieval")
+    iteration_count: int = Field(0, description="Current iteration count")
+    max_iterations: int = Field(3, description="Maximum number of iterative retries")
+    context_sufficient: bool = Field(
+        False, description="Whether current context is sufficient to answer"
+    )
+    missing_info: str = Field(
+        "", description="What key information is still missing for answering"
+    )
+    missing_info_history: list[str] = Field(
+        default_factory=list,
+        description="History of missing information feedback across iterations",
+    )
+    judge_reason: str = Field(
+        "", description="Reasoning from context evaluator for traceability"
+    )
     retrieved_docs: list[Document] = Field(
         default_factory=list, description="Documents from the retrieval agent"
     )
@@ -74,3 +91,16 @@ class RAGOutput(BaseModel):
 
     answer: str = Field(..., description="The final generated answer")
     evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
+
+
+class ContextEvaluation(BaseModel):
+    """Structured output returned by the context evaluator."""
+
+    context_sufficient: bool = Field(
+        ..., description="True when current context is enough to answer"
+    )
+    missing_info: str = Field(
+        "", description="Missing information summary when context is insufficient"
+    )
+    judge_reason: str = Field("", description="Short rationale for the judgement")
+    accumulated_context: list[str] = Field([""], description="迭代中积累的上下文信息")

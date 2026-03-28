@@ -13,13 +13,10 @@ Reference:
 from __future__ import annotations
 
 import logging
-
 from langchain_openai import ChatOpenAI
 
 from flexrag.abstractions.base_generator import BaseGenerator
 from flexrag.schema import RAGOutput
-from flexrag.utils import is_debug
-
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +92,7 @@ class OpenAIGenerator(BaseGenerator):
         self,
         query: str,
         context: str,
+        accumulated_context: list[str],
         source_documents: list[str],
     ) -> RAGOutput:
         """Call GPT-4o and return a structured :class:`~flexrag.schema.RAGOutput`.
@@ -102,6 +100,7 @@ class OpenAIGenerator(BaseGenerator):
         Args:
             query: The user's question.
             context: Optimised context produced by the context optimisation node.
+            accumulated_context: 历史积累信息
             source_documents: Raw document texts (used to populate
                 ``evidence`` when the model cannot cite specific passages).
 
@@ -114,13 +113,14 @@ class OpenAIGenerator(BaseGenerator):
         """
         human_prompt = (
             f"Context:\n{context}\n\n"
+            f"History Context:\n{accumulated_context}\n\n"
             f"Question: {query}\n\n"
             "Return a JSON object with 'answer' and 'evidence' fields."
         )
 
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        logger.debug("Calling OpenAI structured output for query: %r", query)
+        logger.info("Calling OpenAI structured output for query: %r", query)
         try:
             result: RAGOutput = await self._chain.ainvoke(  # type: ignore[assignment]
                 [
@@ -129,8 +129,7 @@ class OpenAIGenerator(BaseGenerator):
                 ]
             )
 
-            if is_debug():
-                print("LLM structured output response:\n%s", result)
+            logger.info(f"LLM structured output response: {result}")
 
         except Exception as e:
             logger.exception(f"OpenAI generator failed. \n  {e}")
@@ -143,5 +142,5 @@ class OpenAIGenerator(BaseGenerator):
                 evidence=source_documents[:3],
             )
 
-        logger.debug("Generated answer (len=%d chars)", len(result.answer))
+        logger.debug(f"Generated answer: {result.answer}")
         return result
