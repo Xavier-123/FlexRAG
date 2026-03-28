@@ -13,11 +13,13 @@
 | **持久化 FAISS 知识库** | 一次构建，多次复用；支持 `.txt` / `.md` / `.pdf` 文件 |
 | **可配置分块策略** | `chunk_size` 与 `chunk_overlap` 可通过环境变量或代码设定 |
 | **vLLM 向量化与重排序** | 对接任意 OpenAI 兼容嵌入端点（本地或远程）及 vLLM cross-encoder |
-| **四阶段 RAG 图** | Retrieve → Rerank → Optimise Context → Generate |
+| **七节点 Agentic RAG 图** | Query Optimizer → Retrieve → Rerank → Optimize Context → Context Evaluator → (Generate \| Analyze Missing Info → 迭代回查) |
+| **迭代式检索（Agentic Loop）** | LLM 上下文评估器判断信息是否充分，不足时自动优化查询并重试，最多 `MAX_ITERATIONS` 轮 |
 | **结构化输出** | 每条答案均为经 Pydantic 校验的 `RAGOutput(answer, evidence)` 对象 |
 | **策略模式** | 每个组件都有 ABC 抽象基类，随意替换任一阶段而不影响其余组件 |
 | **Gradio Web UI** | 支持多知识库（HotpotQA / 2WikiMultihopQA / MuSiQue / NQ）动态无缝切换 |
 | **评估模块** | 内置 EM、Char-F1、Recall@k 等指标，支持离线批量评估 |
+| **异步批量处理** | `batch_run.py` 支持并发控制（Semaphore）批量运行 QA 并输出 JSON 结果 |
 | **交互式命令行** | `main.py` 自动检测或构建知识库，进入交互式问答循环 |
 
 ---
@@ -40,20 +42,29 @@
                               faiss_index.bin  +
                               docstore.json  + ...
 
-                ┌─────────────────────────────────────┐
-                │         RAG 查询流水线              │
-                │                                     │
-  用户提问 ────►│  [Retrieve]  LlamaIndex FAISS 检索  │
-                │       │                             │
-                │  [Rerank]    vLLM cross-encoder 重排│
-                │       │                             │
-                │  [Optimise]  LLM 上下文过滤压缩     │
-                │       │                             │
-                │  [Generate]  LLM 结构化输出生成     │
-                └───────┬─────────────────────────────┘
-                        │
-                    RAGOutput
-                 { answer, evidence }
+                ┌──────────────────────────────────────────────────┐
+                │           Agentic RAG 查询流水线（7 节点）        │
+                │                                                  │
+  用户提问 ────►│  [Query Optimizer]  LLM 优化检索查询             │
+                │         │                                        │
+                │  [Retrieve]    LlamaIndex FAISS 检索             │
+                │         │                                        │
+                │  [Rerank]      vLLM cross-encoder 重排           │
+                │         │                                        │
+                │  [Optimize Context]  LLM 上下文过滤压缩          │
+                │         │                                        │
+                │  [Context Evaluator]  LLM 判断信息是否充分        │
+                │         │                                        │
+                │    sufficient? ──Yes──►  [Generate]              │
+                │         │                    │                   │
+                │         No                   ▼                   │
+                │         ▼               RAGOutput                │
+                │  [Analyse Missing Info]  记录缺失信息 + 迭代+1    │
+                │         │                                        │
+                │  iteration < MAX? ──Yes──► [Query Optimizer] ◄──┘│
+                │         │                                        │
+                │         No ──────────────► [Generate]            │
+                └──────────────────────────────────────────────────┘
 ```
 
 ---
@@ -67,17 +78,21 @@ FlexRAG/
 ├── requirements.txt                     # Python 依赖
 ├── scripts/
 │   ├── build_knowledge_base.py          # 独立知识库构建脚本（含 CLI 参数）
+│   ├── batch_run.py                     # 异步批量 QA 处理脚本（并发 Semaphore 控制）
 │   └── eval_rag.py                      # RAG 评估脚本（读取 eval_results.json）
 └── flexrag/
     ├── __init__.py                      # 包入口（导出 RAGPipeline）
     ├── config.py                        # Pydantic Settings（读取环境变量 / .env）
-    ├── schema.py                        # Document、RAGState、RAGOutput 数据模型
+    ├── schema.py                        # Document、RAGState、RAGOutput、ContextEvaluation 数据模型
     ├── pipeline.py                      # RAGPipeline 高层编排器
+    ├── logging_config.py                # 全局日志配置工具
     ├── utils.py                         # 通用工具函数
     ├── abstractions/                    # 抽象基类（策略模式）
     │   ├── base_retriever.py
     │   ├── base_reranker.py
     │   ├── base_context_optimizer.py
+    │   ├── base_context_evaluator.py    # 上下文评估器抽象基类
+    │   ├── base_query_optimizer.py      # 查询优化器抽象基类
     │   ├── base_generator.py
     │   └── base_knowledge.py
     ├── knowledge/                       # 知识库构建模块
@@ -89,11 +104,15 @@ FlexRAG/
     │   └── vllm_reranker.py             # vLLM cross-encoder 重排序器
     ├── context_optimizers/
     │   └── llm_context_optimizer.py     # 基于 LLM 的上下文提取优化器
+    ├── evaluators/
+    │   └── llm_context_evaluator.py     # 基于 LLM 的上下文充分性评估器（Agentic 裁判）
+    ├── query_optimizers/
+    │   └── llm_query_optimizer.py       # 基于 LLM 的检索查询优化器（迭代重查）
     ├── generators/
     │   └── openai_generator.py          # 结构化输出生成器
     ├── graph/
-    │   ├── nodes.py                     # LangGraph 节点工厂
-    │   └── builder.py                   # StateGraph 组装与编译
+    │   ├── nodes.py                     # LangGraph 节点工厂（7 节点）
+    │   └── builder.py                   # StateGraph 组装与编译（含条件路由）
     └── evaluate/                        # 评估模块
         ├── metrics/
         │   ├── base.py                  # BaseMetric 抽象类
@@ -170,6 +189,10 @@ KNOWLEDGE_CHUNK_OVERLAP=50
 TOP_K_RETRIEVAL=10
 TOP_K_RERANK=5
 CONTEXT_MAX_TOKENS=3000
+MAX_ITERATIONS=3
+
+# --- 日志（可选）---
+LOG_LEVEL="INFO"
 ```
 
 ---
@@ -255,8 +278,10 @@ asyncio.run(build())
 import asyncio
 from flexrag.config import Settings
 from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
+from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
 from flexrag.generators.openai_generator import OpenAIGenerator
 from flexrag.pipeline import RAGPipeline
+from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
 from flexrag.rerankers.vllm_reranker import VLLMReranker
 from flexrag.retrievers import LlamaIndexRetriever
 from langchain_openai import ChatOpenAI
@@ -286,6 +311,8 @@ async def query():
             api_key=settings.reranker_api_key,
         ),
         context_optimizer=LLMContextOptimizer(llm=llm),
+        query_optimizer=LLMQueryOptimizer(llm=llm),
+        context_evaluator=LLMContextEvaluator(llm=llm),
         generator=OpenAIGenerator(
             model=settings.vllm_llm_model,
             api_key=settings.llm_api_key,
@@ -307,6 +334,48 @@ asyncio.run(query())
 ---
 
 ## 脚本工具
+
+### 异步批量处理脚本
+
+`batch_run.py` 支持并发控制（`asyncio.Semaphore`）对大规模 QA 数据集进行批量推理，并将结果输出为 JSON 文件，供后续评估使用。
+
+```bash
+python scripts/batch_run.py \
+    --embedding-base-url http://localhost:8001/v1 \
+    --vllm-embedding-model BAAI/bge-large-en-v1.5 \
+    --reranker-base-url http://localhost:8002/v1 \
+    --vllm-reranker-model BAAI/bge-reranker-v2-m3 \
+    --llm-base-url http://localhost:8000/v1 \
+    --vllm-llm-model Qwen/Qwen2.5-7B-Instruct \
+    --knowledge-persist-dir ./data/knowledge_persist_dir \
+    --input-file ./qa_data.json \
+    --output-file ./eval_results.json \
+    --max-concurrent-tasks 5 \
+    --max-iterations 3
+```
+
+输入 JSON 格式（每项包含 `question` 与可选的 `answer`）：
+
+```json
+[
+  {"question": "问题文本", "answer": "参考答案（可选）"}
+]
+```
+
+输出 JSON 格式：
+
+```json
+[
+  {
+    "question": "问题文本",
+    "expected": "参考答案",
+    "generated_answer": "模型生成的答案",
+    "evidence": ["检索片段1", "检索片段2"],
+    "status": "success",
+    "error": null
+  }
+]
+```
 
 ### 知识库构建脚本
 
@@ -382,6 +451,14 @@ class MyReranker(BaseReranker):
         return sorted(documents, key=lambda d: len(d.text), reverse=True)[:top_k]
 ```
 
+**示例：自定义查询优化器**
+
+继承 `BaseQueryOptimizer`，实现 `optimize_query(original_query, missing_info, accumulated_context, iteration_count, previous_query)` 方法即可，用于在 Agentic 迭代循环中生成优化后的检索查询。
+
+**示例：自定义上下文评估器**
+
+继承 `BaseContextEvaluator`，实现 `evaluate(original_query, optimized_context, accumulated_context)` 方法，返回 `ContextEvaluation(context_sufficient, missing_info, judge_reason, accumulated_context)`，控制 Agentic 循环是否继续迭代。
+
 **示例：自定义知识库后端**
 
 继承 `BaseKnowledgeBuilder`，实现 `load_files`、`build_index`、`save` 和 `index_exists` 四个方法即可。
@@ -420,3 +497,6 @@ python -m pytest tests/ -v
 | `TOP_K_RETRIEVAL` | `10` | 重排序前检索的文档数量 |
 | `TOP_K_RERANK` | `5` | 重排序后保留的文档数量 |
 | `CONTEXT_MAX_TOKENS` | `3000` | 传给生成器的上下文 token 预算 |
+| `MAX_ITERATIONS` | `3` | Agentic RAG 最大迭代重查轮数 |
+| `LOG_LEVEL` | `INFO` | 全局日志级别（DEBUG / INFO / WARNING / ERROR / CRITICAL） |
+| `LOG_FORMAT` | `%(asctime)s  %(levelname)-8s  %(name)s  %(message)s` | 全局日志格式字符串 |
