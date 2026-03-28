@@ -7,6 +7,8 @@ validated via Pydantic Settings.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -140,3 +142,34 @@ class Settings(BaseSettings):
         validation_alias="KNOWLEDGE_CHUNK_OVERLAP",
         description="Token overlap between consecutive document chunks",
     )
+
+    # --- Graph architecture diagram ---
+    draw_image_path: Optional[str] = Field(
+        default=None,
+        validation_alias="DRAW_IMAGE_PATH",
+        description="If set, saves the LangGraph architecture diagram (PNG) to this path",
+    )
+
+    # --- Tracing & Persistence ---
+    checkpoint_db_path: Optional[str] = Field(
+        default=None,
+        validation_alias="CHECKPOINT_DB_PATH",
+        description=(
+            "Path to the SQLite database used for LangGraph checkpoint persistence "
+            "(e.g. './data/checkpoints.db'). When None, checkpointing is disabled."
+        ),
+    )
+    llm_audit_log_path: Optional[str] = Field(
+        default=None,
+        validation_alias="LLM_AUDIT_LOG_PATH",
+        description=(
+            "Path to a JSONL file where every LLM prompt and response is appended "
+            "for audit purposes (e.g. './data/audit_llm.jsonl'). "
+            "When None, LLM auditing is disabled."
+        ),
+    )
+
+
+# Rebuild the model so that forward-references in Optional[str] fields
+# (introduced by ``from __future__ import annotations``) are resolved.
+Settings.model_rebuild()

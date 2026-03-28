@@ -15,12 +15,18 @@ Typical usage::
     output = pipeline.run("What is RAG?")
     print(output.answer)
     print(output.evidence)
+    # Retrieve the full execution trace using output.thread_id:
+    #   from flexrag.tracing import CheckpointReader
+    #   reader = CheckpointReader(cfg.checkpoint_db_path)
+    #   reader.print_run(output.thread_id)
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Any
+import sqlite3
+import uuid
+from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
 
@@ -56,6 +62,10 @@ class RAGPipeline:
         reranker: :class:`~flexrag.rerankers.VLLMReranker` instance.
         context_optimizer: :class:`~flexrag.context_optimizers.LLMContextOptimizer`.        generator: :class:`~flexrag.generators.OpenAIGenerator` instance.
         settings: :class:`~flexrag.config.Settings` driving numeric hyper-params.
+        checkpoint_db_path: Optional path to a SQLite database file used to
+            persist LangGraph state checkpoints after every node.  When set,
+            every :meth:`arun` call saves a full per-node trace that can be
+            replayed with :class:`~flexrag.tracing.CheckpointReader`.
 
     See Also:
         :meth:`from_settings` – convenience factory that reads everything from
@@ -71,9 +81,39 @@ class RAGPipeline:
         context_evaluator: LLMContextEvaluator,
         generator: OpenAIGenerator,
         settings: Settings,
+        checkpoint_db_path: Optional[str] = None,
     ) -> None:
         self._retriever = retriever
         self._settings = settings
+        self._checkpoint_db_path = checkpoint_db_path
+
+        # --- Checkpoint saver (optional) ---
+        # SqliteSaver is used because it works correctly with both the
+        # synchronous run() wrapper and the async arun() entry point.
+        # check_same_thread=False is required so the connection can be reused
+        # across asyncio tasks.
+        self._checkpoint_conn: Optional[sqlite3.Connection] = None
+        checkpointer = None
+        if checkpoint_db_path:
+            try:
+                from langgraph.checkpoint.sqlite import SqliteSaver
+
+                self._checkpoint_conn = sqlite3.connect(
+                    checkpoint_db_path, check_same_thread=False
+                )
+                # check_same_thread=False is intentional: SqliteSaver
+                # serialises its own writes internally, and asyncio requires
+                # sharing the connection across coroutines on the same thread.
+                checkpointer = SqliteSaver(self._checkpoint_conn)
+                logger.info(
+                    "Checkpoint persistence enabled – database: %r", checkpoint_db_path
+                )
+            except ImportError:
+                logger.warning(
+                    "langgraph-checkpoint-sqlite is not installed; "
+                    "checkpointing is disabled. "
+                    "Install it with: pip install langgraph-checkpoint-sqlite"
+                )
 
         self._graph = build_rag_graph(
             retriever=retriever,
@@ -86,7 +126,17 @@ class RAGPipeline:
             top_k_rerank=settings.top_k_rerank,
             context_max_tokens=settings.context_max_tokens,
             draw_image_path=settings.draw_image_path,
+            checkpointer=checkpointer,
         )
+
+    def close(self) -> None:
+        """Close the underlying checkpoint database connection, if open."""
+        if self._checkpoint_conn is not None:
+            self._checkpoint_conn.close()
+            self._checkpoint_conn = None
+
+    def __del__(self) -> None:
+        self.close()
 
     # ------------------------------------------------------------------
     # Factory
@@ -151,6 +201,7 @@ class RAGPipeline:
             context_evaluator=context_evaluator,
             generator=generator,
             settings=settings,
+            checkpoint_db_path=settings.checkpoint_db_path,
         )
 
     # ------------------------------------------------------------------
@@ -171,7 +222,7 @@ class RAGPipeline:
         self._retriever.add_documents(texts, metadatas=metadatas)
         logger.info("Indexed %d document(s)", len(texts))
 
-    def run(self, query: str) -> RAGOutput:
+    def run(self, query: str, thread_id: Optional[str] = None) -> RAGOutput:
         """Execute the full RAG pipeline for *query* (synchronous wrapper).
 
         Prefer :meth:`arun` in async code. This convenience wrapper calls
@@ -180,31 +231,51 @@ class RAGPipeline:
 
         Args:
             query: The user's question.
+            thread_id: Optional checkpoint thread identifier.  When
+                checkpointing is enabled, pass a stable ID (e.g. a session ID)
+                to group multiple queries into one conversation thread.  When
+                ``None`` a fresh UUID is generated for each call.
 
         Returns:
-            A :class:`~flexrag.schema.RAGOutput` containing ``answer`` and
-            ``evidence``.
+            A :class:`~flexrag.schema.RAGOutput` containing ``answer``,
+            ``evidence``, and ``thread_id``.
 
         Raises:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
         import asyncio
-        return asyncio.run(self.arun(query))
+        return asyncio.run(self.arun(query, thread_id=thread_id))
 
-    async def arun(self, query: str) -> RAGOutput:
+    async def arun(self, query: str, thread_id: Optional[str] = None) -> RAGOutput:
         """Execute the full RAG pipeline for *query* asynchronously.
 
         Args:
             query: The user's question.
+            thread_id: Optional checkpoint thread identifier.  When
+                checkpointing is enabled, pass a stable ID (e.g. a session ID)
+                to group multiple queries into one conversation thread.  When
+                ``None`` a fresh UUID is generated for each call so that every
+                invocation is stored independently.
 
         Returns:
-            A :class:`~flexrag.schema.RAGOutput` containing ``answer`` and
-            ``evidence``.
+            A :class:`~flexrag.schema.RAGOutput` containing ``answer``,
+            ``evidence``, and ``thread_id`` (the ID used for this run,
+            regardless of whether checkpointing is active).
 
         Raises:
             RuntimeError: If any pipeline node reports an unrecoverable error.
         """
-        logger.info("Pipeline started – query: %r", query)
+        # Each run gets a unique thread_id so checkpoints are stored per query.
+        # Callers may supply a stable ID to create a multi-turn conversation
+        # thread in the checkpoint store.
+        run_thread_id = thread_id or str(uuid.uuid4())
+
+        logger.info("Pipeline started – query: %r  thread_id: %s", query, run_thread_id)
+
+        # LangGraph reads the thread_id from config["configurable"]["thread_id"]
+        # to namespace all checkpoints for this invocation.
+        config: dict[str, Any] = {"configurable": {"thread_id": run_thread_id}}
+
         result: dict[str, Any] = await self._graph.ainvoke(
             {
                 "query": query,
@@ -215,7 +286,9 @@ class RAGPipeline:
                 "missing_info": "",
                 "missing_info_history": [],
                 "accumulated_context": [],
-            }
+                "node_trace": [],
+            },
+            config=config,
         )
 
         if error := result.get("error"):
@@ -224,4 +297,5 @@ class RAGPipeline:
         return RAGOutput(
             answer=result.get("answer", ""),
             evidence=result.get("evidence", []),
+            thread_id=run_thread_id,
         )
