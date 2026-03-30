@@ -130,6 +130,27 @@ class BaseContextEvaluator(ABC):
 
 
 # ---------------------------------------------------------------------------
+# Query routing
+# ---------------------------------------------------------------------------
+
+
+class BaseQueryRouter(ABC):
+    """Strategy interface for classifying the user query type."""
+
+    @abstractmethod
+    async def route(self, query: str) -> str:
+        """Classify *query* and return one of: 'simple', 'vague', 'complex', 'professional'.
+
+        Args:
+            query: The user's original question.
+
+        Returns:
+            A string label identifying the query type, used to select the
+            appropriate optimisation strategy.
+        """
+
+
+# ---------------------------------------------------------------------------
 # Query transformation
 # ---------------------------------------------------------------------------
 
@@ -145,8 +166,49 @@ class BaseQueryOptimizer(ABC):
         missing_info: str,
         iteration_count: int,
         previous_query: str = "",
+        query_type: str = "simple",
     ) -> str:
-        """Return a retrieval-ready query for the current iteration."""
+        """Return a retrieval-ready query for the current iteration.
+
+        Args:
+            original_query: The user's original question.
+            accumulated_context: Context collected in previous iterations.
+            missing_info: Feedback on what information is still missing.
+            iteration_count: Current iteration number.
+            previous_query: The query used in the previous iteration.
+            query_type: Query classification from the router ('simple', 'vague',
+                'complex', or 'professional'), used to select the optimisation
+                strategy.
+        """
+
+
+# ---------------------------------------------------------------------------
+# Multi-query generation
+# ---------------------------------------------------------------------------
+
+
+class BaseMultiQueryGenerator(ABC):
+    """Strategy interface for producing multiple search-ready queries."""
+
+    @abstractmethod
+    async def generate_queries(
+        self,
+        original_query: str,
+        optimized_query: str,
+        query_type: str,
+    ) -> list[str]:
+        """Produce a list of search queries from the optimiser output.
+
+        Args:
+            original_query: The user's original question (fallback).
+            optimized_query: The output of the query optimiser (may contain
+                multiple lines for decomposed sub-questions).
+            query_type: The query classification label so that the generator
+                knows how to interpret the optimiser output.
+
+        Returns:
+            A non-empty list of strings to pass to the retriever.
+        """
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +318,9 @@ __all__ = [
     "BaseReranker",
     "BaseContextOptimizer",
     "BaseContextEvaluator",
+    "BaseQueryRouter",
     "BaseQueryOptimizer",
+    "BaseMultiQueryGenerator",
     "BaseGenerator",
     "BaseKnowledgeBuilder",
 ]
