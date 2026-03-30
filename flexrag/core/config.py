@@ -173,3 +173,4 @@ class Settings(BaseSettings):
 # Rebuild the model so that forward-references in Optional[str] fields
 # (introduced by ``from __future__ import annotations``) are resolved.
 Settings.model_rebuild()
+settings = Settings()

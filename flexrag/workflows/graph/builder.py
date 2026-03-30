@@ -87,8 +87,6 @@ def build_rag_graph(
     query_optimizer: BaseQueryOptimizer,
     context_evaluator: BaseContextEvaluator,
     generator: BaseGenerator,
-    top_k_retrieval: int = 10,
-    top_k_rerank: int = 5,
     context_max_tokens: int = 3000,
     draw_image_path: Optional[str] = None,
     checkpointer: Optional[BaseCheckpointSaver] = None,
@@ -108,8 +106,6 @@ def build_rag_graph(
             :class:`~flexrag.components.post_retrieval.LLMContextOptimizer`).
         generator: Concrete generator (e.g.
             :class:`~flexrag.components.generation.OpenAIGenerator`).
-        top_k_retrieval: Number of documents to retrieve.
-        top_k_rerank: Number of documents to keep after reranking.
         context_max_tokens: Token budget for the context window.
         draw_image_path: 如果提供此路径（如 'architecture.png'），则将架构图保存到本地。
         checkpointer: Optional LangGraph checkpoint saver.  When provided,
@@ -137,8 +133,8 @@ def build_rag_graph(
     """
     # ---- Create node callables ----
     query_optimizer_node = make_query_optimizer_node(query_optimizer)
-    retrieve_node = make_retrieve_node(retriever, top_k=top_k_retrieval)
-    rerank_node = make_rerank_node(reranker, top_k=top_k_rerank)
+    retrieve_node = make_retrieve_node(retriever)
+    rerank_node = make_rerank_node(reranker)
     optimize_context_node = make_optimize_context_node(
         context_optimizer, max_tokens=context_max_tokens
     )

@@ -32,14 +32,10 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.config import Settings
-from flexrag.components.post_retrieval.llm_context_optimizer import LLMContextOptimizer
-from flexrag.components.judges.llm_context_evaluator import LLMContextEvaluator
-from flexrag.components.generation.openai_generator import OpenAIGenerator
-from flexrag.workflows.graph.builder import build_rag_graph
-from flexrag.components.query_transform.llm_query_optimizer import LLMQueryOptimizer
-from flexrag.components.post_retrieval.vllm_reranker import VLLMReranker
-from flexrag.components.retrieval.llamaindex_retriever import LlamaIndexRetriever
+from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, LLMQueryOptimizer, \
+    VLLMReranker, LlamaIndexRetriever
 from flexrag.core.schema import RAGOutput
+from flexrag.workflows.graph.builder import build_rag_graph
 
 logger = logging.getLogger(__name__)
 
@@ -73,15 +69,15 @@ class RAGPipeline:
     """
 
     def __init__(
-        self,
-        retriever: BaseRetriever,
-        reranker: VLLMReranker,
-        context_optimizer: LLMContextOptimizer,
-        query_optimizer: LLMQueryOptimizer,
-        context_evaluator: LLMContextEvaluator,
-        generator: OpenAIGenerator,
-        settings: Settings,
-        checkpoint_db_path: Optional[str] = None,
+            self,
+            retriever: BaseRetriever,
+            reranker: VLLMReranker,
+            context_optimizer: LLMContextOptimizer,
+            query_optimizer: LLMQueryOptimizer,
+            context_evaluator: LLMContextEvaluator,
+            generator: OpenAIGenerator,
+            settings: Settings,
+            checkpoint_db_path: Optional[str] = None,
     ) -> None:
         self._retriever = retriever
         self._settings = settings
@@ -122,8 +118,6 @@ class RAGPipeline:
             query_optimizer=query_optimizer,
             context_evaluator=context_evaluator,
             generator=generator,
-            top_k_retrieval=settings.top_k_retrieval,
-            top_k_rerank=settings.top_k_rerank,
             context_max_tokens=settings.context_max_tokens,
             draw_image_path=settings.draw_image_path,
             checkpointer=checkpointer,
@@ -209,9 +203,9 @@ class RAGPipeline:
     # ------------------------------------------------------------------
 
     def add_documents(
-        self,
-        texts: list[str],
-        metadatas: list[dict[str, Any]] | None = None,
+            self,
+            texts: list[str],
+            metadatas: list[dict[str, Any]] | None = None,
     ) -> None:
         """Index a list of text chunks so they can be retrieved later.
 

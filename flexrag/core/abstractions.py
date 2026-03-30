@@ -28,12 +28,11 @@ class BaseRetriever(ABC):
     """
 
     @abstractmethod
-    async def retrieve(self, query: str, top_k: int) -> list[Document]:
+    async def retrieve(self, query: str) -> list[Document]:
         """Retrieve the most relevant documents for *query*.
 
         Args:
             query: The user's question or search string.
-            top_k: Maximum number of documents to return.
 
         Returns:
             A list of :class:`~flexrag.core.schema.Document` objects sorted by
@@ -61,14 +60,12 @@ class BaseReranker(ABC):
         self,
         query: str,
         documents: list[Document],
-        top_k: int,
     ) -> list[Document]:
         """Rerank *documents* with respect to *query* and return top *top_k*.
 
         Args:
             query: The user's question used as the reranking reference.
             documents: Candidate documents retrieved in the previous step.
-            top_k: Number of documents to keep after reranking.
 
         Returns:
             A list of at most *top_k* :class:`~flexrag.core.schema.Document`

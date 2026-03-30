@@ -28,6 +28,7 @@ from flexrag.core.abstractions import BaseQueryOptimizer
 from flexrag.core.abstractions import BaseReranker
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.schema import Document
+from flexrag.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,11 @@ def make_query_optimizer_node(
 
 def make_retrieve_node(
     retriever: BaseRetriever,
-    top_k: int,
 ) -> Any:
     """Create the retrieval node function.
 
     Args:
         retriever: A concrete :class:`~flexrag.core.abstractions.BaseRetriever`.
-        top_k: Number of documents to retrieve.
 
     Returns:
         A callable compatible with :meth:`StateGraph.add_node`.
@@ -102,9 +101,9 @@ def make_retrieve_node(
         """
         logger.info("-------- retrieve node --------")
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
-        logger.info("[retrieve] query=%r  top_k=%d", query, top_k)
+        logger.info("[retrieve] query=%r  top_k=%d", query, settings.top_k_retrieval)
         try:
-            docs: list[Document] = await retriever.retrieve(query, top_k=top_k)
+            docs: list[Document] = await retriever.retrieve(query)
             return {
                 "retrieved_docs": [d.model_dump() for d in docs],
                 "node_trace": [{"node": "retrieve", "query": query, "docs_retrieved": len(docs)}],
@@ -118,13 +117,11 @@ def make_retrieve_node(
 
 def make_rerank_node(
     reranker: BaseReranker,
-    top_k: int,
 ) -> Any:
     """Create the reranking node function.
 
     Args:
         reranker: A concrete :class:`~flexrag.core.abstractions.BaseReranker`.
-        top_k: Number of documents to keep after reranking.
 
     Returns:
         A callable compatible with :meth:`StateGraph.add_node`.
@@ -145,10 +142,10 @@ def make_rerank_node(
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
         raw_docs: list[dict] = state.get("retrieved_docs", [])
         documents = [Document(**d) for d in raw_docs]
-        logger.info("[rerank] %d docs in → top_k=%d", len(documents), top_k)
+        logger.info("[rerank] %d docs in → top_k=%d", len(documents), settings.top_k_rerank)
         try:
             reranked: list[Document] = await reranker.rerank(
-                query, documents, top_k=top_k
+                query, documents
             )
             return {
                 "reranked_docs": [d.model_dump() for d in reranked],

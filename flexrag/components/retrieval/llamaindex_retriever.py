@@ -73,14 +73,14 @@ class VLLMEmbedding(BaseEmbedding):
     _endpoint: str = PrivateAttr()
 
     def __init__(
-        self,
-        base_url: str,
-        model: str,
-        api_key: str | None = None,
-        embed_batch_size: int = 5,
-        http_client: Any | None = None,
-        async_http_client: Any | None = None,
-        **kwargs: Any,
+            self,
+            base_url: str,
+            model: str,
+            api_key: str | None = None,
+            embed_batch_size: int = 5,
+            http_client: Any | None = None,
+            async_http_client: Any | None = None,
+            **kwargs: Any,
     ) -> None:
         # 1. 初始化父类 (Pydantic BaseModel)
         super().__init__(
@@ -190,17 +190,19 @@ class LlamaIndexRetriever(BaseRetriever):
     """
 
     def __init__(
-        self,
-        index: VectorStoreIndex | None,
-        embed_base_url: str,
-        embed_model_name: str,
-        embed_api_key: str | None = None,
+            self,
+            index: VectorStoreIndex | None,
+            embed_base_url: str,
+            embed_model_name: str,
+            embed_api_key: str | None = None,
+            top_k: int | None = 5,
     ) -> None:
         self._embed_model = VLLMEmbedding(
             base_url=embed_base_url,
             model=embed_model_name,
             api_key=embed_api_key,
         )
+        self._top_k = top_k
         # Inject our custom embedding into the global LlamaIndex settings so
         # that the VectorStoreIndex uses it for both ingestion and querying.
         LlamaSettings.embed_model = self._embed_model  # type: ignore[assignment]
@@ -284,7 +286,7 @@ class LlamaIndexRetriever(BaseRetriever):
     # BaseRetriever interface
     # ------------------------------------------------------------------
 
-    async def retrieve(self, query: str, top_k: int) -> list[Document]:
+    async def retrieve(self, query: str) -> list[Document]:
         """Retrieve *top_k* documents relevant to *query*.
 
         Internally creates (or re-uses) a LlamaIndex
@@ -299,6 +301,7 @@ class LlamaIndexRetriever(BaseRetriever):
         Returns:
             List of :class:`~flexrag.core.schema.Document` sorted by descending score.
         """
+        top_k = self._top_k
         if self._llama_retriever is None or self._llama_retriever.similarity_top_k != top_k:
             self._llama_retriever = self._index.as_retriever(similarity_top_k=top_k)
 

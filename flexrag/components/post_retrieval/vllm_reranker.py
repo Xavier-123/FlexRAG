@@ -66,12 +66,14 @@ class VLLMReranker(BaseReranker):
         base_url: str,
         model: str,
         api_key: str | None = None,
+        top_k: int | None = 5,
         http_client: Any | None = None,
     ) -> None:
         # self._endpoint = base_url.rstrip("/") + "/v1/rerank"
         self._endpoint = base_url
         self._model = model
         self._api_key = api_key
+        self._top_k = top_k
         self._client: httpx.AsyncClient = http_client or httpx.AsyncClient(timeout=60.0)
 
     # ------------------------------------------------------------------
@@ -82,14 +84,12 @@ class VLLMReranker(BaseReranker):
         self,
         query: str,
         documents: list[Document],
-        top_k: int,
     ) -> list[Document]:
         """Rerank *documents* against *query* via the vLLM rerank endpoint.
 
         Args:
             query: The user's question.
             documents: Candidate documents to score.
-            top_k: Maximum number of documents to return after reranking.
 
         Returns:
             Up to *top_k* :class:`~flexrag.core.schema.Document` objects sorted by
@@ -134,6 +134,6 @@ class VLLMReranker(BaseReranker):
 
         # Sort descending by score and truncate to top_k
         reranked.sort(key=lambda d: d.score, reverse=True)
-        selected = reranked[:top_k]
+        selected = reranked[:self._top_k]
         logger.info("Reranked: kept %d / %d documents", len(selected), len(documents))
         return selected
