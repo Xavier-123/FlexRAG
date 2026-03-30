@@ -93,8 +93,9 @@ def make_query_optimizer_node(
                 previous_query=previous_query,
                 strategies=strategies,
             )
-            # Use the simple-strategy result (or first available) as current_query
-            # for downstream nodes that rely on a single query (e.g. reranker).
+            # Prefer the 'simple' strategy result as the canonical current_query
+            # (used by reranker and other single-query nodes).  Fall back to
+            # the first available strategy, then to the original query.
             current_query = (
                 strategy_queries.get("simple")
                 or next(iter(strategy_queries.values()), None)
@@ -130,27 +131,17 @@ def make_multi_query_generator_node(generator: BaseMultiQueryGenerator) -> Any:
         original_query: str = state.get("original_query") or state["query"]
         strategy_queries: dict[str, str] = state.get("strategy_queries") or {}
         try:
-            if strategy_queries:
-                # New multi-strategy path: build full query set from all strategies.
-                queries = await generator.generate_all_queries(
-                    original_query=original_query,
-                    strategy_queries=strategy_queries,
-                )
-            else:
-                # Fallback for iterations where strategy_queries may be absent.
+            if not strategy_queries:
+                # Fallback: treat the single current_query as one strategy entry
+                # so that generate_all_queries handles deduplication uniformly.
                 optimized_query: str = state.get("current_query") or original_query
                 query_type: str = state.get("query_type", "simple")
-                sub_queries = await generator.generate_queries(
-                    original_query=original_query,
-                    optimized_query=optimized_query,
-                    query_type=query_type,
-                )
-                seen: set[str] = {original_query}
-                queries = [original_query]
-                for q in sub_queries:
-                    if q and q not in seen:
-                        seen.add(q)
-                        queries.append(q)
+                strategy_queries = {query_type: optimized_query}
+
+            queries = await generator.generate_all_queries(
+                original_query=original_query,
+                strategy_queries=strategy_queries,
+            )
             logger.info("[multi_query_generator] produced %d queries", len(queries))
             return {
                 "optimized_queries": queries,

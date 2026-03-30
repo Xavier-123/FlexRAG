@@ -6,6 +6,7 @@ All base classes are defined in this single module for easy discovery.
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 
 from flexrag.core.schema import ContextEvaluation, Document, GenOutput, RAGOutput
@@ -204,8 +205,6 @@ class BaseQueryOptimizer(ABC):
         Returns:
             A mapping of strategy name → optimised query string.
         """
-        import asyncio
-
         if strategies is None:
             strategies = ["simple", "vague", "complex", "professional"]
         tasks = [
