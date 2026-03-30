@@ -85,6 +85,12 @@ class RAGState(BaseModel):
     )
 
 
+class GenOutput(BaseModel):
+    answer: str = Field(..., description="The final generated answer")
+    evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
+    thread_id: str = Field("", description="Checkpoint thread ID; empty when checkpointing is disabled")
+
+
 class RAGOutput(BaseModel):
     """Structured final output returned to the caller.
 
@@ -99,6 +105,7 @@ class RAGOutput(BaseModel):
 
     answer: str = Field(..., description="The final generated answer")
     evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
+    trace: list[dict] = Field(..., description="轨迹信息，包含每个节点的输入输出等详细信息")
     thread_id: str = Field("", description="Checkpoint thread ID; empty when checkpointing is disabled")
 
 

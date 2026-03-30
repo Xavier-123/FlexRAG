@@ -8,15 +8,10 @@ import logging
 from typing import List, Dict
 from langchain_openai import ChatOpenAI
 
-from flexrag.config import Settings
-from flexrag.logging_config import setup_logging
-from flexrag.context_optimizers.llm_context_optimizer import LLMContextOptimizer
-from flexrag.evaluators.llm_context_evaluator import LLMContextEvaluator
-from flexrag.generators.openai_generator import OpenAIGenerator
-from flexrag.pipeline import RAGPipeline
-from flexrag.query_optimizers.llm_query_optimizer import LLMQueryOptimizer
-from flexrag.rerankers.vllm_reranker import VLLMReranker
-from flexrag.retrievers import LlamaIndexRetriever
+from flexrag.core.config import Settings
+from flexrag.observability import setup_logging
+from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, LLMQueryOptimizer, VLLMReranker, LlamaIndexRetriever
+from flexrag.workflows import RAGPipeline
 
 
 def is_debug():
@@ -79,6 +74,7 @@ async def process_single_qa(
                 "expected": item.get("answer"),
                 "generated_answer": output.answer,
                 "evidence": output.evidence,
+                "trace": output.trace,
                 "status": "success",
                 "error": None
             }
@@ -88,6 +84,7 @@ async def process_single_qa(
                 "expected": item.get("answer"),
                 "generated_answer": None,
                 "evidence": [],
+                "trace": [],
                 "status": "error",
                 "error": str(e)
             }

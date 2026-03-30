@@ -33,7 +33,7 @@ import argparse
 import json
 import sys
 
-from flexrag.tracing import CheckpointReader
+from flexrag.observability.tracing import CheckpointReader
 
 
 def _build_parser() -> argparse.ArgumentParser:

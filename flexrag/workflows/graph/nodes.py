@@ -47,7 +47,7 @@ def make_query_optimizer_node(
     """Create the query-optimisation node function."""
 
     async def query_optimizer_node(state: StateDict) -> StateDict:
-        logger.debug("-------- query optimizer node --------")
+        logger.info("-------- query optimizer node --------")
         if state.get("error"):
             return {}
         original_query: str = state.get("original_query") or state["query"]
@@ -100,7 +100,7 @@ def make_retrieve_node(
         Writes:
             ``state["retrieved_docs"]``
         """
-        logger.debug("-------- retrieve node --------")
+        logger.info("-------- retrieve node --------")
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
         logger.info("[retrieve] query=%r  top_k=%d", query, top_k)
         try:
@@ -139,7 +139,7 @@ def make_rerank_node(
         Writes:
             ``state["reranked_docs"]``
         """
-        logger.debug("-------- rerank node --------")
+        logger.info("-------- rerank node --------")
         if state.get("error"):
             return {}
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
@@ -184,7 +184,7 @@ def make_optimize_context_node(
         Writes:
             ``state["optimized_context"]``
         """
-        logger.debug("-------- optimize context node --------")
+        logger.info("-------- optimize context node --------")
         if state.get("error"):
             return {}
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
@@ -225,7 +225,7 @@ def make_generate_node(generator: BaseGenerator) -> Any:
         Writes:
             ``state["answer"]``, ``state["evidence"]``
         """
-        logger.debug("-------- generate node --------")
+        logger.info("-------- generate node --------")
         if state.get("error"):
             return {}
         query: str = state.get("original_query") or state["query"]
@@ -252,7 +252,7 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
     """Create the context-evaluator (judge) node function."""
 
     async def context_evaluator_node(state: StateDict) -> StateDict:
-        logger.debug("-------- context evaluator node --------")
+        logger.info("-------- context evaluator node --------")
         if state.get("error"):
             return {}
         original_query: str = state.get("original_query") or state["query"]
@@ -279,7 +279,7 @@ def make_analyze_missing_info_node() -> Any:
     """Create the node that records feedback and increments iteration counter."""
 
     async def analyze_missing_info_node(state: StateDict) -> StateDict:
-        logger.debug("-------- analyze missing info node --------")
+        logger.info("-------- analyze missing info node --------")
         if state.get("error"):
             return {}
         missing_info: str = state.get("missing_info", "")

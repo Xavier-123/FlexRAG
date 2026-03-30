@@ -222,7 +222,7 @@ class RAGPipeline:
         self._retriever.add_documents(texts, metadatas=metadatas)
         logger.info("Indexed %d document(s)", len(texts))
 
-    def run(self, query: str, thread_id: Optional[str] = None) -> RAGOutput:
+    def run(self, query: str, thread_id: Optional[str] = None):
         """Execute the full RAG pipeline for *query* (synchronous wrapper).
 
         Prefer :meth:`arun` in async code. This convenience wrapper calls
@@ -246,7 +246,7 @@ class RAGPipeline:
         import asyncio
         return asyncio.run(self.arun(query, thread_id=thread_id))
 
-    async def arun(self, query: str, thread_id: Optional[str] = None) -> RAGOutput:
+    async def arun(self, query: str, thread_id: Optional[str] = None):
         """Execute the full RAG pipeline for *query* asynchronously.
 
         Args:
@@ -297,5 +297,6 @@ class RAGPipeline:
         return RAGOutput(
             answer=result.get("answer", ""),
             evidence=result.get("evidence", []),
+            trace=result.get("node_trace", []),
             thread_id=run_thread_id,
         )

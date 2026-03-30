@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from flexrag.core.schema import ContextEvaluation, Document, RAGOutput
+from flexrag.core.schema import ContextEvaluation, Document, GenOutput, RAGOutput
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,7 @@ class BaseGenerator(ABC):
         context: str,
         accumulated_context: list[str],
         source_documents: list[str],
-    ) -> RAGOutput:
+    ) -> GenOutput:
         """Generate a structured answer grounded in *context*.
 
         Args:

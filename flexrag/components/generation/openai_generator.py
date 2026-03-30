@@ -16,7 +16,7 @@ import logging
 from langchain_openai import ChatOpenAI
 
 from flexrag.core.abstractions import BaseGenerator
-from flexrag.core.schema import RAGOutput
+from flexrag.core.schema import GenOutput
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +69,11 @@ class OpenAIGenerator(BaseGenerator):
     """
 
     def __init__(
-        self,
-        model: str = "Qwen/Qwen2.5-7B-Instruct",
-        api_key: str | None = None,
-        base_url: str | None = None,
-        temperature: float = 0.0,
+            self,
+            model: str = "Qwen/Qwen2.5-7B-Instruct",
+            api_key: str | None = None,
+            base_url: str | None = None,
+            temperature: float = 0.0,
     ) -> None:
         llm = ChatOpenAI(
             model=model,
@@ -82,19 +82,19 @@ class OpenAIGenerator(BaseGenerator):
             temperature=temperature,
         )
         # Bind the Pydantic schema – LangChain will enforce the JSON shape.
-        self._chain = llm.with_structured_output(RAGOutput)
+        self._chain = llm.with_structured_output(GenOutput)
 
     # ------------------------------------------------------------------
     # BaseGenerator interface
     # ------------------------------------------------------------------
 
     async def generate(
-        self,
-        query: str,
-        context: str,
-        accumulated_context: list[str],
-        source_documents: list[str],
-    ) -> RAGOutput:
+            self,
+            query: str,
+            context: str,
+            accumulated_context: list[str],
+            source_documents: list[str],
+    ) -> GenOutput:
         """Call GPT-4o and return a structured :class:`~flexrag.core.schema.RAGOutput`.
 
         Args:
@@ -122,7 +122,7 @@ class OpenAIGenerator(BaseGenerator):
 
         logger.info("Calling OpenAI structured output for query: %r", query)
         try:
-            result: RAGOutput = await self._chain.ainvoke(  # type: ignore[assignment]
+            result: GenOutput = await self._chain.ainvoke(  # type: ignore[assignment]
                 [
                     SystemMessage(content=_SYSTEM_PROMPT_ZH),
                     HumanMessage(content=human_prompt),
@@ -137,9 +137,9 @@ class OpenAIGenerator(BaseGenerator):
 
         # Safety net: if model returns no evidence fall back to source docs
         if not result.evidence and source_documents:
-            result = RAGOutput(
-                answer=result.answer,
-                evidence=source_documents[:3],
+            result = GenOutput(
+                 answer=result.answer,
+                 evidence=source_documents[:3]
             )
 
         logger.debug(f"Generated answer: {result.answer}")
