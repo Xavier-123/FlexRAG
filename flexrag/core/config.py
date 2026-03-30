@@ -143,6 +143,17 @@ class Settings(BaseSettings):
         description="Token overlap between consecutive document chunks",
     )
 
+    # --- Pre-retrieval query optimisation strategies ---
+    pre_retrieval_strategies: list[str] = Field(
+        default=["simple", "vague", "complex", "professional"],
+        validation_alias="PRE_RETRIEVAL_STRATEGIES",
+        description=(
+            "Query optimisation strategies to run in the pre-retrieval stage. "
+            "One or more of: simple, vague, complex, professional. "
+            "All four are executed by default."
+        ),
+    )
+
     # --- Graph architecture diagram ---
     draw_image_path: Optional[str] = Field(
         default=None,
