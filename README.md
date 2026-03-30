@@ -129,17 +129,17 @@ pip install -r requirements.txt
 # --- LLM ---
 LLM_BASE_URL=http://localhost:8000/v1
 LLM_API_KEY=sk-...
-VLLM_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
 
 # --- Embedding ---
 EMBEDDING_BASE_URL=http://localhost:8001/v1
 EMBEDDING_API_KEY=sk-...
-VLLM_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
 
 # --- Reranker ---
 RERANKER_BASE_URL=http://localhost:8002/v1
 RERANKER_API_KEY=sk-...
-VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
 # --- 知识库（可选，括号内为默认值）---
 KNOWLEDGE_PERSIST_DIR=./data/knowledge_persist_dir
@@ -236,7 +236,7 @@ settings = Settings()
 async def build():
     builder = FaissKnowledgeBuilder(
         embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.vllm_embedding_model,
+        embed_model_name=settings.embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
     await builder.load_files("./my_documents")   # 支持 .txt / .md / .pdf
@@ -270,13 +270,13 @@ async def query():
     retriever = LlamaIndexRetriever(
         index=None,
         embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.vllm_embedding_model,
+        embed_model_name=settings.embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
     await retriever.load_index(settings.knowledge_persist_dir)
 
     llm = ChatOpenAI(
-        model=settings.vllm_llm_model,
+        model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
         temperature=0.0,
@@ -285,14 +285,14 @@ async def query():
         retriever=retriever,
         reranker=VLLMReranker(
             base_url=settings.reranker_base_url,
-            model=settings.vllm_reranker_model,
+            model=settings.reranker_model,
             api_key=settings.reranker_api_key,
         ),
         context_optimizer=LLMContextOptimizer(llm=llm),
         query_optimizer=LLMQueryOptimizer(llm=llm),
         context_evaluator=LLMContextEvaluator(llm=llm),
         generator=OpenAIGenerator(
-            model=settings.vllm_llm_model,
+            model=settings.llm_model,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         ),
@@ -320,11 +320,11 @@ asyncio.run(query())
 ```bash
 python scripts/batch_run.py \
     --embedding-base-url http://localhost:8001/v1 \
-    --vllm-embedding-model BAAI/bge-large-en-v1.5 \
+    --embedding-model BAAI/bge-large-en-v1.5 \
     --reranker-base-url http://localhost:8002/v1 \
-    --vllm-reranker-model BAAI/bge-reranker-v2-m3 \
+    --reranker-model BAAI/bge-reranker-v2-m3 \
     --llm-base-url http://localhost:8000/v1 \
-    --vllm-llm-model Qwen/Qwen2.5-7B-Instruct \
+    --llm-model Qwen/Qwen2.5-7B-Instruct \
     --knowledge-persist-dir ./data/knowledge_persist_dir \
     --input-file ./qa_data.json \
     --output-file ./eval_results.json \
@@ -466,9 +466,9 @@ python -m pytest tests/ -v
 | `EMBEDDING_API_KEY` | `sk-xxxx` | 向量化 API 密钥 |
 | `RERANKER_BASE_URL` | `http://localhost:8018/v1` | 重排序服务端点 |
 | `RERANKER_API_KEY` | `sk-xxxx` | 重排序 API 密钥 |
-| `VLLM_LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | 对话模型名称 |
-| `VLLM_EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | 向量化模型名称 |
-| `VLLM_RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排序模型名称 |
+| `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | 对话模型名称 |
+| `EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | 向量化模型名称 |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排序模型名称 |
 | `KNOWLEDGE_PERSIST_DIR` | `./data/knowledge_persist_dir` | FAISS 索引存储目录 |
 | `KNOWLEDGE_CHUNK_SIZE` | `512` | 每个文档块的最大 token 数 |
 | `KNOWLEDGE_CHUNK_OVERLAP` | `50` | 相邻块之间的 token 重叠量 |

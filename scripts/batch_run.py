@@ -24,18 +24,18 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
     retriever = LlamaIndexRetriever(
         index=None,
         embed_base_url=args.embedding_base_url,
-        embed_model_name=args.vllm_embedding_model,
+        embed_model_name=args.embedding_model,
         embed_api_key=args.embedding_api_key,
     )
     await retriever.load_index(args.knowledge_persist_dir)
 
     reranker = VLLMReranker(
         base_url=args.reranker_base_url,
-        model=args.vllm_reranker_model,
+        model=args.reranker_model,
         api_key=args.reranker_api_key,
     )
     llm = ChatOpenAI(
-        model=args.vllm_llm_model,
+        model=args.llm_model,
         api_key=args.llm_api_key,
         base_url=args.llm_base_url,
         temperature=0.0,
@@ -49,7 +49,7 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         query_optimizer=query_optimizer,
         context_evaluator=context_evaluator,
         generator=OpenAIGenerator(
-            model=args.vllm_llm_model,
+            model=args.llm_model,
             api_key=args.llm_api_key,
             base_url=args.llm_base_url,
         ),
@@ -128,7 +128,7 @@ def parse_arguments() -> argparse.Namespace:
 
     # --- Embedding 相关参数 ---
     parser.add_argument("--embedding-base-url", type=str, required=True, help="Embedding API Base URL")
-    parser.add_argument("--vllm-embedding-model", type=str, required=True, help="Embedding 模型名称")
+    parser.add_argument("--embedding-model", type=str, required=True, help="Embedding 模型名称")
     parser.add_argument("--embedding-api-key", type=str, default="EMPTY", help="Embedding API Key")
 
     # --- 知识库存储相关参数 ---
@@ -139,14 +139,14 @@ def parse_arguments() -> argparse.Namespace:
 
     # --- Reranker 相关参数 ---
     parser.add_argument("--reranker-base-url", type=str, required=True, help="Reranker API Base URL")
-    parser.add_argument("--vllm-reranker-model", type=str, required=True, help="Reranker 模型名称")
+    parser.add_argument("--reranker-model", type=str, required=True, help="Reranker 模型名称")
     parser.add_argument("--reranker-api-key", type=str, default="EMPTY", help="Reranker API Key")
     parser.add_argument("--top-k-rerank", type=int, default=5,
                         help="重排序阶段 (Rerank) 最终保留给大模型的 Top-K 文档数量")
 
     # --- LLM 相关参数 ---
     parser.add_argument("--llm-base-url", type=str, required=True, help="LLM API Base URL")
-    parser.add_argument("--vllm-llm-model", type=str, required=True, help="LLM 模型名称")
+    parser.add_argument("--llm-model", type=str, required=True, help="LLM 模型名称")
     parser.add_argument("--llm-api-key", type=str, default="EMPTY", help="LLM API Key")
     parser.add_argument("--context-max-tokens", type=int, default=4096,
                         help="LLM 的上下文 (Context) 最大 Token 长度限制")

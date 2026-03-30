@@ -26,9 +26,9 @@ Prerequisites
        EMBEDDING_API_KEY=sk-...
        RERANKER_BASE_URL=http://localhost:8002/v1
        RERANKER_API_KEY=sk-...
-       VLLM_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
-       VLLM_EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
-       VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+       LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+       EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+       RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 
        # Optional – knowledge base settings (shown with defaults)
        KNOWLEDGE_PERSIST_DIR=./knowledge_base
@@ -61,13 +61,8 @@ from langchain_openai import ChatOpenAI
 
 from flexrag import RAGPipeline
 from flexrag.core.config import Settings
-from flexrag.components.post_retrieval.llm_context_optimizer import LLMContextOptimizer
-from flexrag.components.judges.llm_context_evaluator import LLMContextEvaluator
-from flexrag.components.generation.openai_generator import OpenAIGenerator
-from flexrag.components.query_transform.llm_query_optimizer import LLMQueryOptimizer
+from flexrag.components import LLMContextOptimizer, OpenAIGenerator, LLMQueryOptimizer, LLMContextEvaluator, VLLMReranker, LlamaIndexRetriever
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder
-from flexrag.components.post_retrieval.vllm_reranker import VLLMReranker
-from flexrag.components.retrieval import LlamaIndexRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -112,16 +107,6 @@ _DEMO_CORPUS = [
 # ---------------------------------------------------------------------------
 
 
-def _make_retriever(settings: Settings) -> LlamaIndexRetriever:
-    """Create a :class:`LlamaIndexRetriever` wired to the configured embedding endpoint."""
-    return LlamaIndexRetriever(
-        index=None,
-        embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.vllm_embedding_model,
-        embed_api_key=settings.embedding_api_key,
-    )
-
-
 async def build_knowledge_base(directory: str, settings: Settings) -> None:
     """Load files from *directory*, build the FAISS index, and save it.
 
@@ -133,7 +118,7 @@ async def build_knowledge_base(directory: str, settings: Settings) -> None:
     """
     builder = FaissKnowledgeBuilder(
         embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.vllm_embedding_model,
+        embed_model_name=settings.embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
     count = await builder.load_files(directory)
@@ -163,7 +148,12 @@ async def load_retriever(settings: Settings) -> LlamaIndexRetriever:
     Returns:
         A ready-to-use :class:`LlamaIndexRetriever` instance.
     """
-    retriever = _make_retriever(settings)
+    retriever = LlamaIndexRetriever(
+        index=None,
+        embed_base_url=settings.embedding_base_url,
+        embed_model_name=settings.embedding_model,
+        embed_api_key=settings.embedding_api_key,
+    )
     await retriever.load_index(settings.knowledge_persist_dir)
     return retriever
 
@@ -177,11 +167,11 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
     """Wire up all pipeline components around *retriever*."""
     reranker = VLLMReranker(
         base_url=settings.reranker_base_url,
-        model=settings.vllm_reranker_model,
+        model=settings.reranker_model,
         api_key=settings.reranker_api_key,
     )
     llm = ChatOpenAI(
-        model=settings.vllm_llm_model,
+        model=settings.llm_model,
         api_key=settings.llm_api_key,  # type: ignore[arg-type]
         base_url=settings.llm_base_url,
         temperature=0.0,
@@ -190,7 +180,7 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
     query_optimizer = LLMQueryOptimizer(llm=llm)
     context_evaluator = LLMContextEvaluator(llm=llm)
     generator = OpenAIGenerator(
-        model=settings.vllm_llm_model,
+        model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
     )

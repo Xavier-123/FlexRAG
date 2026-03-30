@@ -27,9 +27,9 @@ class Settings(BaseSettings):
         embedding_api_key: API key for the embedding endpoint.
         reranker_base_url: Base URL of the reranker model serving endpoint.
         reranker_api_key: API key for the reranker endpoint.
-        vllm_llm_model: Name / path of the chat LLM model served by vLLM.
-        vllm_embedding_model: Name / path of the embedding model served by vLLM.
-        vllm_reranker_model: Name / path of the reranker model served by vLLM.
+        llm_model: Name / path of the chat LLM model served by vLLM.
+        embedding_model: Name / path of the embedding model served by vLLM.
+        reranker_model: Name / path of the reranker model served by vLLM.
         top_k_retrieval: Number of documents to retrieve before reranking.
         top_k_rerank: Number of top documents to keep after reranking.
         context_max_tokens: Approximate token budget for the optimised context
@@ -79,19 +79,19 @@ class Settings(BaseSettings):
     )
 
     # --- Model names ---
-    vllm_llm_model: str = Field(
+    llm_model: str = Field(
         "Qwen/Qwen2.5-7B-Instruct",
-        validation_alias="VLLM_LLM_MODEL",
+        validation_alias="LLM_MODEL",
         description="Chat LLM model name served by vLLM",
     )
-    vllm_embedding_model: str = Field(
+    embedding_model: str = Field(
         "BAAI/bge-large-en-v1.5",
-        validation_alias="VLLM_EMBEDDING_MODEL",
+        validation_alias="EMBEDDING_MODEL",
         description="Embedding model name served by vLLM",
     )
-    vllm_reranker_model: str = Field(
+    reranker_model: str = Field(
         "BAAI/bge-reranker-v2-m3",
-        validation_alias="VLLM_RERANKER_MODEL",
+        validation_alias="RERANKER_MODEL",
         description="Reranker model name served by vLLM",
     )
 

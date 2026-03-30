@@ -158,20 +158,20 @@ class RAGPipeline:
         retriever = LlamaIndexRetriever(
             index=None,
             embed_base_url=settings.embedding_base_url,
-            embed_model_name=settings.vllm_embedding_model,
+            embed_model_name=settings.embedding_model,
             embed_api_key=settings.embedding_api_key,
         )
 
         # -- Reranker (vLLM cross-encoder) --
         reranker = VLLMReranker(
             base_url=settings.reranker_base_url,
-            model=settings.vllm_reranker_model,
+            model=settings.reranker_model,
             api_key=settings.reranker_api_key,
         )
 
         # -- Context Optimiser (LLM via vLLM) --
         llm = ChatOpenAI(
-            model=settings.vllm_llm_model,
+            model=settings.llm_model,
             api_key=settings.llm_api_key,  # type: ignore[arg-type]
             base_url=settings.llm_base_url,
             temperature=0.0,
@@ -182,7 +182,7 @@ class RAGPipeline:
 
         # -- Generator (vLLM Structured Output) --
         generator = OpenAIGenerator(
-            model=settings.vllm_llm_model,
+            model=settings.llm_model,
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )

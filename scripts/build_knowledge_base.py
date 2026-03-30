@@ -16,7 +16,7 @@ The most important ones for this script are:
 
     EMBEDDING_BASE_URL   – Base URL of the embedding model endpoint
     EMBEDDING_API_KEY    – API key for the embedding endpoint
-    VLLM_EMBEDDING_MODEL – Name of the embedding model
+    EMBEDDING_MODEL – Name of the embedding model
 
     KNOWLEDGE_PERSIST_DIR   – Where to save the index  (default: ./knowledge_base)
     KNOWLEDGE_CHUNK_SIZE    – Tokens per chunk           (default: 512)

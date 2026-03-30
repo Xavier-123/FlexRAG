@@ -4,12 +4,12 @@ import os
 
 from flexrag import RAGPipeline
 from flexrag.core.config import Settings
-from flexrag.components.post_retrieval.llm_context_optimizer import LLMContextOptimizer
-from flexrag.components.judges.llm_context_evaluator import LLMContextEvaluator
-from flexrag.components.generation.openai_generator import OpenAIGenerator
-from flexrag.components.query_transform.llm_query_optimizer import LLMQueryOptimizer
+from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimizer
+from flexrag.components.judges.context_evaluator import LLMContextEvaluator
+from flexrag.components.generation.generator import OpenAIGenerator
+from flexrag.components.pre_retrieval.query_optimizer import LLMQueryOptimizer
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder
-from flexrag.components.post_retrieval.vllm_reranker import VLLMReranker
+from flexrag.components.post_retrieval.reranker import VLLMReranker
 from flexrag.components.retrieval import LlamaIndexRetriever
 from langchain_openai import ChatOpenAI
 
@@ -37,12 +37,12 @@ def init_base_components():
 
     reranker = VLLMReranker(
         base_url=settings.reranker_base_url,
-        model=settings.vllm_reranker_model,
+        model=settings.reranker_model,
         api_key=settings.reranker_api_key,
     )
 
     llm = ChatOpenAI(
-        model=settings.vllm_llm_model,
+        model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
         temperature=0.0,
@@ -53,7 +53,7 @@ def init_base_components():
     context_evaluator = LLMContextEvaluator(llm=llm)
 
     generator = OpenAIGenerator(
-        model=settings.vllm_llm_model,
+        model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
     )
@@ -81,7 +81,7 @@ async def get_or_load_pipeline(kb_name: str) -> RAGPipeline:
     retriever = LlamaIndexRetriever(
         index=None,
         embed_base_url=settings.embedding_base_url,  # 修复：移除多余的引号
-        embed_model_name=settings.vllm_embedding_model,
+        embed_model_name=settings.embedding_model,
         embed_api_key=settings.embedding_api_key,
     )
 

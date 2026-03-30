@@ -46,7 +46,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[import]
 
 from flexrag.core.abstractions import BaseKnowledgeBuilder
-from flexrag.components.retrieval.llamaindex_retriever import VLLMEmbedding
+from flexrag.components.retrieval.retriever import VLLMEmbedding
 from flexrag.indexing.knowledge.custom_reader import _CustomReader
 
 logger = logging.getLogger(__name__)
