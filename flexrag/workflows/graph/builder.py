@@ -62,6 +62,7 @@ class _GraphState(TypedDict, total=False):
     original_query: str
     current_query: str
     query_type: str
+    strategy_queries: dict[str, str]  # per-strategy optimized queries (strategy → query)
     optimized_queries: list[str]
     iteration_count: int
     max_iterations: int

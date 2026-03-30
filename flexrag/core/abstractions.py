@@ -6,6 +6,7 @@ All base classes are defined in this single module for easy discovery.
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 
 from flexrag.core.schema import ContextEvaluation, Document, GenOutput, RAGOutput
@@ -181,6 +182,45 @@ class BaseQueryOptimizer(ABC):
                 strategy.
         """
 
+    async def optimize_all_strategies(
+        self,
+        original_query: str,
+        accumulated_context: list[str],
+        missing_info: str,
+        iteration_count: int,
+        previous_query: str = "",
+        strategies: list[str] | None = None,
+    ) -> dict[str, str]:
+        """Run :meth:`optimize_query` for each strategy concurrently.
+
+        Args:
+            original_query: The user's original question.
+            accumulated_context: Context collected in previous iterations.
+            missing_info: Feedback on what information is still missing.
+            iteration_count: Current iteration number.
+            previous_query: The query used in the previous iteration.
+            strategies: Subset of strategies to run.  Defaults to all four:
+                ``["simple", "vague", "complex", "professional"]``.
+
+        Returns:
+            A mapping of strategy name → optimised query string.
+        """
+        if strategies is None:
+            strategies = ["simple", "vague", "complex", "professional"]
+        tasks = [
+            self.optimize_query(
+                original_query=original_query,
+                accumulated_context=accumulated_context,
+                missing_info=missing_info,
+                iteration_count=iteration_count,
+                previous_query=previous_query,
+                query_type=strategy,
+            )
+            for strategy in strategies
+        ]
+        results = await asyncio.gather(*tasks)
+        return dict(zip(strategies, results))
+
 
 # ---------------------------------------------------------------------------
 # Multi-query generation
@@ -209,6 +249,37 @@ class BaseMultiQueryGenerator(ABC):
         Returns:
             A non-empty list of strings to pass to the retriever.
         """
+
+    async def generate_all_queries(
+        self,
+        original_query: str,
+        strategy_queries: dict[str, str],
+    ) -> list[str]:
+        """Build the full query set from per-strategy optimised queries.
+
+        The returned list always starts with the *original_query* followed by
+        each strategy's contribution (in insertion order).  Duplicate strings
+        are removed while preserving order.
+
+        Args:
+            original_query: The user's original, unmodified question.
+            strategy_queries: Mapping of strategy name → optimised query string
+                as returned by :meth:`~BaseQueryOptimizer.optimize_all_strategies`.
+
+        Returns:
+            A deduplicated, ordered list of query strings:
+            ``[original_query, simple_query, vague_query, complex_sub_q1,
+            complex_sub_q2, ..., professional_query]``.
+        """
+        all_queries: list[str] = [original_query]
+        seen: set[str] = {original_query}
+        for strategy, optimized in strategy_queries.items():
+            queries = await self.generate_queries(original_query, optimized, strategy)
+            for q in queries:
+                if q and q not in seen:
+                    seen.add(q)
+                    all_queries.append(q)
+        return all_queries
 
 
 # ---------------------------------------------------------------------------

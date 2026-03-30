@@ -80,22 +80,39 @@ def make_query_optimizer_node(
         missing_info: str = state.get("missing_info", "")
         iteration_count: int = int(state.get("iteration_count", 0))
         previous_query: str = state.get("current_query", "")
-        query_type: str = state.get("query_type", "simple")
-        logger.info("[query_optimizer] iteration=%d  query_type=%s", iteration_count, query_type)
+        strategies: list[str] = settings.pre_retrieval_strategies
+        logger.info(
+            "[query_optimizer] iteration=%d  strategies=%s", iteration_count, strategies
+        )
         try:
-            current_query = await optimizer.optimize_query(
+            strategy_queries: dict[str, str] = await optimizer.optimize_all_strategies(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
                 iteration_count=iteration_count,
                 previous_query=previous_query,
-                query_type=query_type,
+                strategies=strategies,
             )
-            optimized = current_query or original_query
+            # Prefer the 'simple' strategy result as the canonical current_query
+            # (used by reranker and other single-query nodes).  Fall back to
+            # the first available strategy, then to the original query.
+            current_query = (
+                strategy_queries.get("simple")
+                or next(iter(strategy_queries.values()), None)
+                or original_query
+            )
             return {
                 "original_query": original_query,
-                "current_query": optimized,
-                "node_trace": [{"node": "query_optimizer", "iteration": iteration_count, "query_type": query_type, "input_query": original_query, "output_query": optimized}],
+                "current_query": current_query,
+                "strategy_queries": strategy_queries,
+                "node_trace": [
+                    {
+                        "node": "query_optimizer",
+                        "iteration": iteration_count,
+                        "strategies": strategies,
+                        "strategy_queries": strategy_queries,
+                    }
+                ],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[query_optimizer] failed: %s", exc)
@@ -112,18 +129,29 @@ def make_multi_query_generator_node(generator: BaseMultiQueryGenerator) -> Any:
         if state.get("error"):
             return {}
         original_query: str = state.get("original_query") or state["query"]
-        optimized_query: str = state.get("current_query") or original_query
-        query_type: str = state.get("query_type", "simple")
+        strategy_queries: dict[str, str] = state.get("strategy_queries") or {}
         try:
-            queries = await generator.generate_queries(
+            if not strategy_queries:
+                # Fallback: treat the single current_query as one strategy entry
+                # so that generate_all_queries handles deduplication uniformly.
+                optimized_query: str = state.get("current_query") or original_query
+                query_type: str = state.get("query_type", "simple")
+                strategy_queries = {query_type: optimized_query}
+
+            queries = await generator.generate_all_queries(
                 original_query=original_query,
-                optimized_query=optimized_query,
-                query_type=query_type,
+                strategy_queries=strategy_queries,
             )
             logger.info("[multi_query_generator] produced %d queries", len(queries))
             return {
                 "optimized_queries": queries,
-                "node_trace": [{"node": "multi_query_generator", "query_type": query_type, "queries": queries}],
+                "node_trace": [
+                    {
+                        "node": "multi_query_generator",
+                        "strategy_queries": strategy_queries,
+                        "queries": queries,
+                    }
+                ],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[multi_query_generator] failed: %s", exc)
