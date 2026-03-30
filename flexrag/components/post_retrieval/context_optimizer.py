@@ -79,7 +79,7 @@ class LLMContextOptimizer(BaseContextOptimizer):
         documents: list[Document],
         accumulated_context: list[str],
         max_tokens: int,
-    ) -> str:
+    ) -> (str, str):
         """Extract relevant passages from *documents* using the LLM.
 
         Args:
@@ -99,18 +99,19 @@ class LLMContextOptimizer(BaseContextOptimizer):
         doc_listing = "\n\n".join(
             f"[Doc {i + 1}]\n{doc.text}" for i, doc in enumerate(documents)
         )
-        human_msg = (
+        human_prompt = (
             f"Question: {query}\n\n"
             f"Documents:\n{doc_listing}\n\n"
             f"history context:\n{accumulated_context}\n\n"
             "提取相关段落。"
         )
+        prompt_string = f"【System】:\n{_SYSTEM_PROMPT_ZH}\n\n【Human】:\n{human_prompt}"
 
         try:
             response = await self._llm.ainvoke(
                 [
                     SystemMessage(content=_SYSTEM_PROMPT_ZH),
-                    HumanMessage(content=human_msg),
+                    HumanMessage(content=human_prompt),
                 ]
             )
             optimized: str = response.content  # type: ignore[union-attr]
@@ -133,4 +134,4 @@ class LLMContextOptimizer(BaseContextOptimizer):
             )
             optimized = optimized[:max_chars]
 
-        return optimized
+        return optimized, prompt_string

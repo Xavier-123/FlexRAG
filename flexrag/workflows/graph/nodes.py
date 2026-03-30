@@ -24,9 +24,7 @@ from typing import Any
 from flexrag.core.abstractions import BaseContextOptimizer
 from flexrag.core.abstractions import BaseContextEvaluator
 from flexrag.core.abstractions import BaseGenerator
-from flexrag.core.abstractions import BaseMultiQueryGenerator
 from flexrag.core.abstractions import BaseQueryOptimizer
-from flexrag.core.abstractions import BaseQueryRouter
 from flexrag.core.abstractions import BaseReranker
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.schema import Document
@@ -44,28 +42,6 @@ StateDict = dict[str, Any]
 # Node factories
 # ---------------------------------------------------------------------------
 
-def make_query_router_node(router: BaseQueryRouter) -> Any:
-    """Create the query-routing node function."""
-
-    async def query_router_node(state: StateDict) -> StateDict:
-        logger.info("-------- query router node --------")
-        if state.get("error"):
-            return {}
-        original_query: str = state.get("original_query") or state["query"]
-        try:
-            query_type = await router.route(original_query)
-            logger.info("[query_router] query_type=%s", query_type)
-            return {
-                "query_type": query_type,
-                "node_trace": [{"node": "query_router", "query": original_query, "query_type": query_type}],
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("[query_router] failed: %s", exc)
-            return {"error": f"Query routing failed: {exc}"}
-
-    return query_router_node
-
-
 def make_query_optimizer_node(
     optimizer: BaseQueryOptimizer,
 ) -> Any:
@@ -79,38 +55,29 @@ def make_query_optimizer_node(
         accumulated_context: list[str] = state.get("accumulated_context", [""])
         missing_info: str = state.get("missing_info", "")
         iteration_count: int = int(state.get("iteration_count", 0))
-        previous_query: str = state.get("current_query", "")
-        strategies: list[str] = settings.pre_retrieval_strategies
+        strategies: list[str] = state.get("pre_retrieval_strategies", ["simple"])  # Default to 'simple' if no router output
         logger.info(
             "[query_optimizer] iteration=%d  strategies=%s", iteration_count, strategies
         )
         try:
-            strategy_queries: dict[str, str] = await optimizer.optimize_all_strategies(
+            optimized_queries: list[str] = await optimizer.generate_optimized_queries(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
                 iteration_count=iteration_count,
-                previous_query=previous_query,
                 strategies=strategies,
             )
-            # Prefer the 'simple' strategy result as the canonical current_query
-            # (used by reranker and other single-query nodes).  Fall back to
-            # the first available strategy, then to the original query.
-            current_query = (
-                strategy_queries.get("simple")
-                or next(iter(strategy_queries.values()), None)
-                or original_query
-            )
+            current_query = optimized_queries[-1] if len(optimized_queries) > 1 else original_query
             return {
+                "iteration_count": state["iteration_count"],
                 "original_query": original_query,
                 "current_query": current_query,
-                "strategy_queries": strategy_queries,
+                "optimized_queries": optimized_queries,
                 "node_trace": [
                     {
                         "node": "query_optimizer",
                         "iteration": iteration_count,
-                        "strategies": strategies,
-                        "strategy_queries": strategy_queries,
+                        "optimized_queries": optimized_queries,
                     }
                 ],
             }
@@ -119,45 +86,6 @@ def make_query_optimizer_node(
             return {"error": f"Query optimization failed: {exc}"}
 
     return query_optimizer_node
-
-
-def make_multi_query_generator_node(generator: BaseMultiQueryGenerator) -> Any:
-    """Create the multi-query-generation node function."""
-
-    async def multi_query_generator_node(state: StateDict) -> StateDict:
-        logger.info("-------- multi query generator node --------")
-        if state.get("error"):
-            return {}
-        original_query: str = state.get("original_query") or state["query"]
-        strategy_queries: dict[str, str] = state.get("strategy_queries") or {}
-        try:
-            if not strategy_queries:
-                # Fallback: treat the single current_query as one strategy entry
-                # so that generate_all_queries handles deduplication uniformly.
-                optimized_query: str = state.get("current_query") or original_query
-                query_type: str = state.get("query_type", "simple")
-                strategy_queries = {query_type: optimized_query}
-
-            queries = await generator.generate_all_queries(
-                original_query=original_query,
-                strategy_queries=strategy_queries,
-            )
-            logger.info("[multi_query_generator] produced %d queries", len(queries))
-            return {
-                "optimized_queries": queries,
-                "node_trace": [
-                    {
-                        "node": "multi_query_generator",
-                        "strategy_queries": strategy_queries,
-                        "queries": queries,
-                    }
-                ],
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("[multi_query_generator] failed: %s", exc)
-            return {"error": f"Multi-query generation failed: {exc}"}
-
-    return multi_query_generator_node
 
 
 def make_retrieve_node(
@@ -196,9 +124,10 @@ def make_retrieve_node(
                         seen.add(d.text)
                         all_docs.append(d)
             logger.info("[retrieve] %d unique docs from %d queries", len(all_docs), len(queries))
+            retrieved_docs = [d.model_dump() for d in all_docs]
             return {
-                "retrieved_docs": [d.model_dump() for d in all_docs],
-                "node_trace": [{"node": "retrieve", "queries": queries, "docs_retrieved": len(all_docs)}],
+                "retrieved_docs": retrieved_docs,
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs": retrieved_docs}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)
@@ -239,9 +168,10 @@ def make_rerank_node(
             reranked: list[Document] = await reranker.rerank(
                 query, documents
             )
+            reranked_docs = [d.model_dump() for d in reranked]
             return {
-                "reranked_docs": [d.model_dump() for d in reranked],
-                "node_trace": [{"node": "rerank", "docs_in": len(documents), "docs_out": len(reranked)}],
+                "reranked_docs": reranked_docs,
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "reranked_docs": reranked_docs}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[rerank] failed: %s", exc)
@@ -282,10 +212,10 @@ def make_optimize_context_node(
         documents = [Document(**d) for d in raw_docs]
         logger.info("[optimize_context] %d docs  max_tokens=%d", len(documents), max_tokens)
         try:
-            context: str = await optimizer.optimize(query, documents, accumulated_context, max_tokens=max_tokens)
+            context, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens=max_tokens)
             return {
                 "optimized_context": context,
-                "node_trace": [{"node": "optimize_context", "docs_in": len(documents), "context_len": len(context)}],
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "context_out": context}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[optimize_context] failed: %s", exc)
@@ -348,14 +278,19 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
         context: str = state.get("optimized_context", "")
         accumulated_context: list[str] = state.get("accumulated_context", [""])
         logger.info("[context_evaluator] context_len=%d", len(context))
+        iteration_count = int(state.get("iteration_count", 0)) + 1
         try:
             result = await evaluator.evaluate(original_query=original_query, optimized_context=context, accumulated_context=accumulated_context)
             return {
+                "iteration_count": iteration_count,
                 "context_sufficient": result.context_sufficient,
                 "missing_info": result.missing_info,
                 "judge_reason": result.judge_reason,
                 "accumulated_context": result.accumulated_context,
-                "node_trace": [{"node": "context_evaluator", "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason}],
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "context_evaluator",
+                                "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason,
+                                "prompt": result.prompt_string
+                                }],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[context_evaluator] failed: %s", exc)
@@ -376,9 +311,13 @@ def make_analyze_missing_info_node() -> Any:
         if missing_info:
             history.append(missing_info)
         iteration_count = int(state.get("iteration_count", 0)) + 1
+
+        # 大模型分析query、上下文、missing_info，总结出下一轮检索的策略（比如：需要更专业的术语？需要更具体的细节？需要更宽泛的相关信息？等等），并写入 state["pre_retrieval_strategies"] 供下一轮 query_optimizer_node 使用。
+
         return {
             "iteration_count": iteration_count,
             "missing_info_history": history,
+            # "missing_info_history": history,    # 优化建议
             "node_trace": [{"node": "analyze_missing_info", "iteration_count": iteration_count, "missing_info": missing_info}],
         }
 

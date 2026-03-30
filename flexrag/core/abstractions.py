@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 
-from flexrag.core.schema import ContextEvaluation, Document, GenOutput, RAGOutput
+from flexrag.core.schema import ContextEvaluation, Document, GenOutput
 
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,7 @@ class BaseContextOptimizer(ABC):
         documents: list[Document],
         accumulated_context: list[str],
         max_tokens: int,
-    ) -> str:
+    ) -> (str, str):
         """Produce an optimised context string from *documents*.
 
         Args:
@@ -109,6 +109,7 @@ class BaseContextOptimizer(ABC):
 
         Returns:
             A single string suitable for inclusion in the generator prompt.
+            传给大模型的提示词。
         """
 
 
@@ -182,44 +183,58 @@ class BaseQueryOptimizer(ABC):
                 strategy.
         """
 
-    async def optimize_all_strategies(
-        self,
-        original_query: str,
-        accumulated_context: list[str],
-        missing_info: str,
-        iteration_count: int,
-        previous_query: str = "",
-        strategies: list[str] | None = None,
-    ) -> dict[str, str]:
-        """Run :meth:`optimize_query` for each strategy concurrently.
+    @abstractmethod
+    def parse_optimized_query(
+            self,
+            original_query: str,
+            optimized_query: str,
+            query_type: str,
+    ) -> list[str]:
+        """Parse the raw optimizer output into a list of search queries."""
 
-        Args:
-            original_query: The user's original question.
-            accumulated_context: Context collected in previous iterations.
-            missing_info: Feedback on what information is still missing.
-            iteration_count: Current iteration number.
-            previous_query: The query used in the previous iteration.
-            strategies: Subset of strategies to run.  Defaults to all four:
-                ``["simple", "vague", "complex", "professional"]``.
+    async def generate_optimized_queries(
+            self,
+            original_query: str,
+            accumulated_context: list[str],
+            missing_info: str,
+            iteration_count: int,
+            strategies: list[str] | None = None,
+    ) -> list[str]:
+        """Orchestrate concurrent optimization and generate the final deduplicated query list.
 
         Returns:
-            A mapping of strategy name → optimised query string.
+            A deduplicated, ordered list of query strings:
+            [original_query, simple_query, vague_query, complex_sub_q1, ...]
         """
         if strategies is None:
             strategies = ["simple", "vague", "complex", "professional"]
+
+        # 1. Concurrently run optimization for all strategies
         tasks = [
             self.optimize_query(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
                 iteration_count=iteration_count,
-                previous_query=previous_query,
                 query_type=strategy,
             )
             for strategy in strategies
         ]
         results = await asyncio.gather(*tasks)
-        return dict(zip(strategies, results))
+        strategy_queries = dict(zip(strategies, results))
+
+        # 2. Parse outputs, aggregate, and deduplicate
+        all_queries: list[str] = [original_query]
+        seen: set[str] = {original_query}
+
+        for strategy, optimized_text in strategy_queries.items():
+            queries = self.parse_optimized_query(original_query, optimized_text, strategy)
+            for q in queries:
+                if q and q not in seen:
+                    seen.add(q)
+                    all_queries.append(q)
+
+        return all_queries
 
 
 # ---------------------------------------------------------------------------
@@ -227,59 +242,59 @@ class BaseQueryOptimizer(ABC):
 # ---------------------------------------------------------------------------
 
 
-class BaseMultiQueryGenerator(ABC):
-    """Strategy interface for producing multiple search-ready queries."""
-
-    @abstractmethod
-    async def generate_queries(
-        self,
-        original_query: str,
-        optimized_query: str,
-        query_type: str,
-    ) -> list[str]:
-        """Produce a list of search queries from the optimiser output.
-
-        Args:
-            original_query: The user's original question (fallback).
-            optimized_query: The output of the query optimiser (may contain
-                multiple lines for decomposed sub-questions).
-            query_type: The query classification label so that the generator
-                knows how to interpret the optimiser output.
-
-        Returns:
-            A non-empty list of strings to pass to the retriever.
-        """
-
-    async def generate_all_queries(
-        self,
-        original_query: str,
-        strategy_queries: dict[str, str],
-    ) -> list[str]:
-        """Build the full query set from per-strategy optimised queries.
-
-        The returned list always starts with the *original_query* followed by
-        each strategy's contribution (in insertion order).  Duplicate strings
-        are removed while preserving order.
-
-        Args:
-            original_query: The user's original, unmodified question.
-            strategy_queries: Mapping of strategy name → optimised query string
-                as returned by :meth:`~BaseQueryOptimizer.optimize_all_strategies`.
-
-        Returns:
-            A deduplicated, ordered list of query strings:
-            ``[original_query, simple_query, vague_query, complex_sub_q1,
-            complex_sub_q2, ..., professional_query]``.
-        """
-        all_queries: list[str] = [original_query]
-        seen: set[str] = {original_query}
-        for strategy, optimized in strategy_queries.items():
-            queries = await self.generate_queries(original_query, optimized, strategy)
-            for q in queries:
-                if q and q not in seen:
-                    seen.add(q)
-                    all_queries.append(q)
-        return all_queries
+# class BaseMultiQueryGenerator(ABC):
+#     """Strategy interface for producing multiple search-ready queries."""
+#
+#     @abstractmethod
+#     async def generate_queries(
+#         self,
+#         original_query: str,
+#         optimized_query: str,
+#         query_type: str,
+#     ) -> list[str]:
+#         """Produce a list of search queries from the optimiser output.
+#
+#         Args:
+#             original_query: The user's original question (fallback).
+#             optimized_query: The output of the query optimiser (may contain
+#                 multiple lines for decomposed sub-questions).
+#             query_type: The query classification label so that the generator
+#                 knows how to interpret the optimiser output.
+#
+#         Returns:
+#             A non-empty list of strings to pass to the retriever.
+#         """
+#
+#     async def generate_all_queries(
+#         self,
+#         original_query: str,
+#         strategy_queries: dict[str, str],
+#     ) -> list[str]:
+#         """Build the full query set from per-strategy optimised queries.
+#
+#         The returned list always starts with the *original_query* followed by
+#         each strategy's contribution (in insertion order).  Duplicate strings
+#         are removed while preserving order.
+#
+#         Args:
+#             original_query: The user's original, unmodified question.
+#             strategy_queries: Mapping of strategy name → optimised query string
+#                 as returned by :meth:`~BaseQueryOptimizer.optimize_all_strategies`.
+#
+#         Returns:
+#             A deduplicated, ordered list of query strings:
+#             ``[original_query, simple_query, vague_query, complex_sub_q1,
+#             complex_sub_q2, ..., professional_query]``.
+#         """
+#         all_queries: list[str] = [original_query]
+#         seen: set[str] = {original_query}
+#         for strategy, optimized in strategy_queries.items():
+#             queries = await self.generate_queries(original_query, optimized, strategy)
+#             for q in queries:
+#                 if q and q not in seen:
+#                     seen.add(q)
+#                     all_queries.append(q)
+#         return all_queries
 
 
 # ---------------------------------------------------------------------------
@@ -389,9 +404,7 @@ __all__ = [
     "BaseReranker",
     "BaseContextOptimizer",
     "BaseContextEvaluator",
-    "BaseQueryRouter",
     "BaseQueryOptimizer",
-    "BaseMultiQueryGenerator",
     "BaseGenerator",
     "BaseKnowledgeBuilder",
 ]

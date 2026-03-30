@@ -32,8 +32,8 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.config import Settings
-from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, LLMQueryRouter, \
-    LLMQueryOptimizer, LLMMultiQueryGenerator, VLLMReranker, LlamaIndexRetriever
+from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, \
+    LLMQueryOptimizer, VLLMReranker, LlamaIndexRetriever
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
 
@@ -73,9 +73,7 @@ class RAGPipeline:
             retriever: BaseRetriever,
             reranker: VLLMReranker,
             context_optimizer: LLMContextOptimizer,
-            query_router: LLMQueryRouter,
             query_optimizer: LLMQueryOptimizer,
-            multi_query_generator: LLMMultiQueryGenerator,
             context_evaluator: LLMContextEvaluator,
             generator: OpenAIGenerator,
             settings: Settings,
@@ -117,9 +115,7 @@ class RAGPipeline:
             retriever=retriever,
             reranker=reranker,
             context_optimizer=context_optimizer,
-            query_router=query_router,
             query_optimizer=query_optimizer,
-            multi_query_generator=multi_query_generator,
             context_evaluator=context_evaluator,
             generator=generator,
             context_max_tokens=settings.context_max_tokens,
@@ -181,9 +177,7 @@ class RAGPipeline:
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
-        query_router = LLMQueryRouter(llm=llm)
         query_optimizer = LLMQueryOptimizer(llm=llm)
-        multi_query_generator = LLMMultiQueryGenerator()
         context_evaluator = LLMContextEvaluator(llm=llm)
 
         # -- Generator (vLLM Structured Output) --
@@ -197,9 +191,7 @@ class RAGPipeline:
             retriever=retriever,
             reranker=reranker,
             context_optimizer=context_optimizer,
-            query_router=query_router,
             query_optimizer=query_optimizer,
-            multi_query_generator=multi_query_generator,
             context_evaluator=context_evaluator,
             generator=generator,
             settings=settings,
@@ -283,7 +275,7 @@ class RAGPipeline:
                 "query": query,
                 "original_query": query,
                 "current_query": "",
-                "query_type": "simple",
+                "pre_retrieval_strategies": self._settings.pre_retrieval_strategies,
                 "optimized_queries": [],
                 "iteration_count": 0,
                 "max_iterations": self._settings.max_iterations,

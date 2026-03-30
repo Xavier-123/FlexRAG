@@ -196,7 +196,13 @@ class LlamaIndexRetriever(BaseRetriever):
             embed_model_name: str,
             embed_api_key: str | None = None,
             top_k: int | None = 5,
+            retrieve_strategy=None,
     ) -> None:
+        if retrieve_strategy is None:
+            retrieve_strategy = ["dense"]
+
+        # 稀疏检索
+
         self._embed_model = VLLMEmbedding(
             base_url=embed_base_url,
             model=embed_model_name,

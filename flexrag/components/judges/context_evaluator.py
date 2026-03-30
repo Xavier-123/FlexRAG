@@ -19,7 +19,7 @@ _SYSTEM_PROMPT_ZH = (
     "你是RAG上下文评估器。判断当前上下文是否足以回答原始问题。"
     "严格输出JSON对象，字段必须为："
     "context_sufficient(boolean), missing_info(string), judge_reason(string)。"
-    "若信息不足，missing_info必须给出下一轮检索可执行的缺失点。"
+    "若信息不足context_sufficient为False时，missing_info必须给出指导下一轮检索的建议。"
     "禁止输出任何JSON以外内容。"
 )
 
@@ -42,6 +42,7 @@ class LLMContextEvaluator(BaseContextEvaluator):
             f"历史上下文:\n{accumulated_context}\n\n"
             "请输出评估JSON："
         )
+        prompt_string = f"【System】:\n{_SYSTEM_PROMPT_ZH}\n\n【Human】:\n{human_prompt}"
         try:
             response = await self._llm.ainvoke(
                 [SystemMessage(content=_SYSTEM_PROMPT_ZH), HumanMessage(content=human_prompt)]
@@ -51,17 +52,19 @@ class LLMContextEvaluator(BaseContextEvaluator):
             context_sufficient = data.get("context_sufficient", False)
             if context_sufficient is False:
                 return ContextEvaluation(
-                    context_sufficient=bool(data.get("context_sufficient", False)),
+                    context_sufficient=False,
                     missing_info=str(data.get("missing_info", "") or ""),
                     judge_reason=str(data.get("judge_reason", "") or ""),
-                    accumulated_context=[optimized_context]
+                    accumulated_context=[optimized_context],
+                    prompt_string=prompt_string
                 )
             else:
                 return ContextEvaluation(
-                    context_sufficient=bool(data.get("context_sufficient", False)),
+                    context_sufficient=True,
                     missing_info=str(data.get("missing_info", "") or ""),
                     judge_reason=str(data.get("judge_reason", "") or ""),
-                    accumulated_context=[]
+                    accumulated_context=[optimized_context],
+                    prompt_string=prompt_string
                 )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Context evaluation parse failed (%s); fallback to insufficient.", exc)
@@ -69,5 +72,6 @@ class LLMContextEvaluator(BaseContextEvaluator):
                 context_sufficient=False,
                 missing_info="评估输出不可解析，需要补充关键事实并重试检索",
                 judge_reason=f"Evaluator fallback: {exc}",
-                accumulated_context=[]
+                accumulated_context=[],
+                prompt_string=prompt_string
             )

@@ -10,7 +10,9 @@ Supports four optimisation strategies selected by query type:
 
 from __future__ import annotations
 
+import re
 import logging
+from typing import Tuple
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -77,20 +79,21 @@ class LLMQueryOptimizer(BaseQueryOptimizer):
         human_prompt = (
             f"原始问题: {original_query}\n"
             f"当前迭代: {iteration_count}\n"
-            f"上轮检索查询: {previous_query or '无'}\n"
+            # f"上轮检索查询: {previous_query or '无'}\n"
             f"已有信息: {accumulated_context or '无'}\n\n"
             f"缺失信息: {missing_info or '无'}\n\n"
             "请根据策略输出优化后的检索查询："
         )
+        prompt_string = f"【System】:\n{system_prompt}\n\n【Human】:\n{human_prompt}"
+
         try:
             response = await self._llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             content = str(response.content).strip()  # type: ignore[union-attr]
             logger.debug("Query optimization (%s) response: %s", query_type, content)
+
             # For single-query strategies, normalise to a single line.
-            # For complex (decomposition), preserve newlines so the multi-query
-            # generator can split the sub-questions correctly.
             if query_type != "complex":
                 content = " ".join(content.splitlines()).strip()
             return content
@@ -98,3 +101,36 @@ class LLMQueryOptimizer(BaseQueryOptimizer):
             logger.warning("Query optimization failed (%s); fallback to original query.", exc)
             return original_query
 
+    def parse_optimized_query(
+            self,
+            original_query: str,
+            optimized_query: str,
+            query_type: str,
+    ) -> list[str]:
+        """Return a list of search queries derived from *optimized_query*."""
+        if query_type == "complex":
+            queries = self._parse_sub_questions(optimized_query)
+            if queries:
+                logger.debug(
+                    "Parsed %d sub-questions for complex query.",
+                    len(queries),
+                )
+                return queries
+
+        # simple / vague / professional: use the (single) optimized query
+        query = optimized_query.strip()
+        result = [query] if query else [original_query]
+        logger.debug("Parsed 1 query (type=%s).", query_type)
+        return result
+
+    @staticmethod
+    def _parse_sub_questions(text: str) -> list[str]:
+        """Split a multi-line decomposition output into individual queries."""
+        lines = re.split(r"\n+", text.strip())
+        cleaned: list[str] = []
+        for line in lines:
+            # Strip leading numbering / bullets: "1. ", "1) ", "- ", "• ", "（1）"
+            line = re.sub(r"^[\d]+[\.\)、）]\s+|^[\-•]\s+", "", line).strip()
+            if len(line) > 2:
+                cleaned.append(line)
+        return cleaned

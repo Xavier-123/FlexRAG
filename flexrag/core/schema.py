@@ -129,3 +129,4 @@ class ContextEvaluation(BaseModel):
     )
     judge_reason: str = Field("", description="Short rationale for the judgement")
     accumulated_context: list[str] = Field([""], description="迭代中积累的上下文信息")
+    prompt_string: str = Field("", description="传入大模型的完整提示词字符串")
