@@ -21,15 +21,19 @@ from langgraph.graph import END, START, StateGraph
 from flexrag.core.abstractions import BaseContextOptimizer
 from flexrag.core.abstractions import BaseContextEvaluator
 from flexrag.core.abstractions import BaseGenerator
+from flexrag.core.abstractions import BaseMultiQueryGenerator
 from flexrag.core.abstractions import BaseQueryOptimizer
+from flexrag.core.abstractions import BaseQueryRouter
 from flexrag.core.abstractions import BaseReranker
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.workflows.graph.nodes import (
     make_analyze_missing_info_node,
     make_context_evaluator_node,
     make_generate_node,
+    make_multi_query_generator_node,
     make_optimize_context_node,
     make_query_optimizer_node,
+    make_query_router_node,
     make_rerank_node,
     make_retrieve_node,
 )
@@ -57,6 +61,8 @@ class _GraphState(TypedDict, total=False):
     query: str
     original_query: str
     current_query: str
+    query_type: str
+    optimized_queries: list[str]
     iteration_count: int
     max_iterations: int
     context_sufficient: bool
@@ -84,7 +90,9 @@ def build_rag_graph(
     retriever: BaseRetriever,
     reranker: BaseReranker,
     context_optimizer: BaseContextOptimizer,
+    query_router: BaseQueryRouter,
     query_optimizer: BaseQueryOptimizer,
+    multi_query_generator: BaseMultiQueryGenerator,
     context_evaluator: BaseContextEvaluator,
     generator: BaseGenerator,
     context_max_tokens: int = 3000,
@@ -132,7 +140,9 @@ def build_rag_graph(
         print(result["evidence"])
     """
     # ---- Create node callables ----
+    query_router_node = make_query_router_node(query_router)
     query_optimizer_node = make_query_optimizer_node(query_optimizer)
+    multi_query_generator_node = make_multi_query_generator_node(multi_query_generator)
     retrieve_node = make_retrieve_node(retriever)
     rerank_node = make_rerank_node(reranker)
     optimize_context_node = make_optimize_context_node(
@@ -145,7 +155,9 @@ def build_rag_graph(
     # ---- Build the graph ----
     graph = StateGraph(_GraphState)
 
+    graph.add_node("query_router", query_router_node)
     graph.add_node("query_optimizer", query_optimizer_node)
+    graph.add_node("multi_query_generator", multi_query_generator_node)
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("rerank", rerank_node)
     graph.add_node("optimize_context", optimize_context_node)
@@ -154,8 +166,11 @@ def build_rag_graph(
     graph.add_node("generate", generate_node)
 
     # ---- Wire up edges ----
-    graph.add_edge(START, "query_optimizer")
-    graph.add_edge("query_optimizer", "retrieve")
+    # Pre-retrieval: query_router → query_optimizer → multi_query_generator → retrieve
+    graph.add_edge(START, "query_router")
+    graph.add_edge("query_router", "query_optimizer")
+    graph.add_edge("query_optimizer", "multi_query_generator")
+    graph.add_edge("multi_query_generator", "retrieve")
     graph.add_edge("retrieve", "rerank")
     graph.add_edge("rerank", "optimize_context")
     graph.add_edge("optimize_context", "context_evaluator")
@@ -167,6 +182,7 @@ def build_rag_graph(
             "analyze_missing_info": "analyze_missing_info",
         },
     )
+    # Loop back to query_optimizer (not router – query type is already known)
     graph.add_conditional_edges(
         "analyze_missing_info",
         _route_after_missing_info_analysis,
@@ -177,7 +193,7 @@ def build_rag_graph(
     )
     graph.add_edge("generate", END)
 
-    logger.debug("Agentic RAG graph compiled with %d nodes", 7)
+    logger.debug("Agentic RAG graph compiled with %d nodes", len(graph.nodes))
     compiled_graph = graph.compile(checkpointer=checkpointer)
 
     # 绘制并保存架构图

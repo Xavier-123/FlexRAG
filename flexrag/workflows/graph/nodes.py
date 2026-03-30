@@ -24,7 +24,9 @@ from typing import Any
 from flexrag.core.abstractions import BaseContextOptimizer
 from flexrag.core.abstractions import BaseContextEvaluator
 from flexrag.core.abstractions import BaseGenerator
+from flexrag.core.abstractions import BaseMultiQueryGenerator
 from flexrag.core.abstractions import BaseQueryOptimizer
+from flexrag.core.abstractions import BaseQueryRouter
 from flexrag.core.abstractions import BaseReranker
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.schema import Document
@@ -42,6 +44,28 @@ StateDict = dict[str, Any]
 # Node factories
 # ---------------------------------------------------------------------------
 
+def make_query_router_node(router: BaseQueryRouter) -> Any:
+    """Create the query-routing node function."""
+
+    async def query_router_node(state: StateDict) -> StateDict:
+        logger.info("-------- query router node --------")
+        if state.get("error"):
+            return {}
+        original_query: str = state.get("original_query") or state["query"]
+        try:
+            query_type = await router.route(original_query)
+            logger.info("[query_router] query_type=%s", query_type)
+            return {
+                "query_type": query_type,
+                "node_trace": [{"node": "query_router", "query": original_query, "query_type": query_type}],
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[query_router] failed: %s", exc)
+            return {"error": f"Query routing failed: {exc}"}
+
+    return query_router_node
+
+
 def make_query_optimizer_node(
     optimizer: BaseQueryOptimizer,
 ) -> Any:
@@ -56,7 +80,8 @@ def make_query_optimizer_node(
         missing_info: str = state.get("missing_info", "")
         iteration_count: int = int(state.get("iteration_count", 0))
         previous_query: str = state.get("current_query", "")
-        logger.info("[query_optimizer] iteration=%d", iteration_count)
+        query_type: str = state.get("query_type", "simple")
+        logger.info("[query_optimizer] iteration=%d  query_type=%s", iteration_count, query_type)
         try:
             current_query = await optimizer.optimize_query(
                 original_query=original_query,
@@ -64,18 +89,47 @@ def make_query_optimizer_node(
                 missing_info=missing_info,
                 iteration_count=iteration_count,
                 previous_query=previous_query,
+                query_type=query_type,
             )
             optimized = current_query or original_query
             return {
                 "original_query": original_query,
                 "current_query": optimized,
-                "node_trace": [{"node": "query_optimizer", "iteration": iteration_count, "input_query": original_query, "output_query": optimized}],
+                "node_trace": [{"node": "query_optimizer", "iteration": iteration_count, "query_type": query_type, "input_query": original_query, "output_query": optimized}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[query_optimizer] failed: %s", exc)
             return {"error": f"Query optimization failed: {exc}"}
 
     return query_optimizer_node
+
+
+def make_multi_query_generator_node(generator: BaseMultiQueryGenerator) -> Any:
+    """Create the multi-query-generation node function."""
+
+    async def multi_query_generator_node(state: StateDict) -> StateDict:
+        logger.info("-------- multi query generator node --------")
+        if state.get("error"):
+            return {}
+        original_query: str = state.get("original_query") or state["query"]
+        optimized_query: str = state.get("current_query") or original_query
+        query_type: str = state.get("query_type", "simple")
+        try:
+            queries = await generator.generate_queries(
+                original_query=original_query,
+                optimized_query=optimized_query,
+                query_type=query_type,
+            )
+            logger.info("[multi_query_generator] produced %d queries", len(queries))
+            return {
+                "optimized_queries": queries,
+                "node_trace": [{"node": "multi_query_generator", "query_type": query_type, "queries": queries}],
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[multi_query_generator] failed: %s", exc)
+            return {"error": f"Multi-query generation failed: {exc}"}
+
+    return multi_query_generator_node
 
 
 def make_retrieve_node(
@@ -94,19 +148,29 @@ def make_retrieve_node(
         """Retrieve relevant documents for the user's query.
 
         Reads:
-            ``state["query"]``
+            ``state["optimized_queries"]`` or ``state["current_query"]``
 
         Writes:
             ``state["retrieved_docs"]``
         """
         logger.info("-------- retrieve node --------")
-        query: str = state.get("current_query") or state.get("original_query") or state["query"]
-        logger.info("[retrieve] query=%r  top_k=%d", query, settings.top_k_retrieval)
+        optimized_queries: list[str] = state.get("optimized_queries") or []
+        fallback_query: str = state.get("current_query") or state.get("original_query") or state["query"]
+        queries = optimized_queries if optimized_queries else [fallback_query]
+        logger.info("[retrieve] %d queries  top_k=%d", len(queries), settings.top_k_retrieval)
         try:
-            docs: list[Document] = await retriever.retrieve(query)
+            seen: set[str] = set()
+            all_docs: list[Document] = []
+            for query in queries:
+                docs: list[Document] = await retriever.retrieve(query)
+                for d in docs:
+                    if d.text not in seen:
+                        seen.add(d.text)
+                        all_docs.append(d)
+            logger.info("[retrieve] %d unique docs from %d queries", len(all_docs), len(queries))
             return {
-                "retrieved_docs": [d.model_dump() for d in docs],
-                "node_trace": [{"node": "retrieve", "query": query, "docs_retrieved": len(docs)}],
+                "retrieved_docs": [d.model_dump() for d in all_docs],
+                "node_trace": [{"node": "retrieve", "queries": queries, "docs_retrieved": len(all_docs)}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)
