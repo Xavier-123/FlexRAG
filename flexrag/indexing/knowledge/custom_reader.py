@@ -19,7 +19,7 @@ class _CustomReader(BaseReader):
                 continue
 
             title = item.get("title", "").strip()
-            text = item.get("text", "").strip()
+            text = item.get("text") or item.get("context") or ""
             idx = item.get("idx")
 
             # 拼接 title 和 text 作为文档内容，有助于 Embedding 捕获完整语义

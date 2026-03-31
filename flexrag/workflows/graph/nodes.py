@@ -21,12 +21,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from flexrag.core.abstractions import BaseContextOptimizer
-from flexrag.core.abstractions import BaseContextEvaluator
-from flexrag.core.abstractions import BaseGenerator
-from flexrag.core.abstractions import BaseQueryOptimizer
-from flexrag.core.abstractions import BaseReranker
-from flexrag.core.abstractions import BaseRetriever
+from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker, BaseRetriever
+# from flexrag.core.abstractions import BaseQueryOptimizer
+from flexrag.components.pre_retrieval.base import BaseQueryOptimizer
 from flexrag.core.schema import Document
 from flexrag.core.config import settings
 
@@ -60,18 +57,15 @@ def make_query_optimizer_node(
             "[query_optimizer] iteration=%d  strategies=%s", iteration_count, strategies
         )
         try:
-            optimized_queries: list[str] = await optimizer.generate_optimized_queries(
+            optimized_queries, current_queries = await optimizer.run(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
-                iteration_count=iteration_count,
-                strategies=strategies,
             )
-            current_query = optimized_queries[-1] if len(optimized_queries) > 1 else original_query
             return {
                 "iteration_count": state["iteration_count"],
                 "original_query": original_query,
-                "current_query": current_query,
+                "current_queries": current_queries,
                 "optimized_queries": optimized_queries,
                 "node_trace": [
                     {
@@ -104,15 +98,14 @@ def make_retrieve_node(
         """Retrieve relevant documents for the user's query.
 
         Reads:
-            ``state["optimized_queries"]`` or ``state["current_query"]``
+            ``state["optimized_queries"]`` or ``state["current_queries"]``
 
         Writes:
             ``state["retrieved_docs"]``
         """
         logger.info("-------- retrieve node --------")
         optimized_queries: list[str] = state.get("optimized_queries") or []
-        fallback_query: str = state.get("current_query") or state.get("original_query") or state["query"]
-        queries = optimized_queries if optimized_queries else [fallback_query]
+        queries = optimized_queries if optimized_queries else [state["original_query"]]
         logger.info("[retrieve] %d queries  top_k=%d", len(queries), settings.top_k_retrieval)
         try:
             seen: set[str] = set()

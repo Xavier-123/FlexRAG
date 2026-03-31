@@ -61,8 +61,11 @@ from langchain_openai import ChatOpenAI
 
 from flexrag import RAGPipeline
 from flexrag.core.config import Settings
-from flexrag.components import LLMContextOptimizer, OpenAIGenerator, LLMQueryOptimizer, LLMContextEvaluator, VLLMReranker, LlamaIndexRetriever
+from flexrag.components import LLMContextOptimizer, OpenAIGenerator, LLMContextEvaluator, VLLMReranker, \
+    LlamaIndexRetriever
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder
+from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
+    TerminologyEnricher
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +180,11 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
         temperature=0.0,
     )
     context_optimizer = LLMContextOptimizer(llm=llm)
-    query_optimizer = LLMQueryOptimizer(llm=llm)
+    query_optimizer = CompositeQueryOptimizer([
+        QueryRewriter(llm=llm),
+        QueryExpander(llm=llm),
+        TaskSplitter(llm=llm),
+    ])
     context_evaluator = LLMContextEvaluator(llm=llm)
     generator = OpenAIGenerator(
         model=settings.llm_model,

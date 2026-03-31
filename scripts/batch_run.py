@@ -10,8 +10,9 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.core.config import Settings
 from flexrag.observability import setup_logging
-from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, LLMQueryOptimizer, VLLMReranker, LlamaIndexRetriever
+from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, VLLMReranker, LlamaIndexRetriever
 from flexrag.workflows import RAGPipeline
+from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, TerminologyEnricher
 
 
 def is_debug():
@@ -42,7 +43,14 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         base_url=args.llm_base_url,
         temperature=0.0,
     )
-    query_optimizer = LLMQueryOptimizer(llm=llm)
+
+    query_optimizer = CompositeQueryOptimizer([
+        QueryRewriter(llm=llm),
+        # QueryExpander(llm=llm),
+        TaskSplitter(llm=llm),
+        # TerminologyEnricher(llm=llm),
+    ])
+
     context_evaluator = LLMContextEvaluator(llm=llm)
     pipeline = RAGPipeline(
         retriever=retriever,

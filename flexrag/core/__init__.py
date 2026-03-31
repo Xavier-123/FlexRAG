@@ -7,7 +7,7 @@ from flexrag.core.abstractions import (
     BaseContextOptimizer,
     BaseGenerator,
     BaseKnowledgeBuilder,
-    BaseQueryOptimizer,
+    # BaseQueryOptimizer,
     BaseReranker,
     BaseRetriever,
 )
@@ -20,7 +20,7 @@ __all__ = [
     "BaseContextOptimizer",
     "BaseContextEvaluator",
     "BaseGenerator",
-    "BaseQueryOptimizer",
+    # "BaseQueryOptimizer",
     "BaseKnowledgeBuilder",
     "Settings",
     "Document",

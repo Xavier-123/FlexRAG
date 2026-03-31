@@ -18,14 +18,9 @@ from typing import Any, Literal, Optional, Annotated
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
-from flexrag.core.abstractions import BaseContextOptimizer
-from flexrag.core.abstractions import BaseContextEvaluator
-from flexrag.core.abstractions import BaseGenerator
-from flexrag.core.abstractions import BaseQueryOptimizer
-from flexrag.core.abstractions import BaseReranker
-from flexrag.core.abstractions import BaseRetriever
+from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker, BaseRetriever
+from flexrag.components.pre_retrieval import BaseQueryOptimizer
 from flexrag.workflows.graph.nodes import (
-    # make_analyze_missing_info_node,
     make_context_evaluator_node,
     make_generate_node,
     make_optimize_context_node,
@@ -56,9 +51,8 @@ class _GraphState(TypedDict, total=False):
 
     query: str
     original_query: str
-    current_query: str
+    current_queries: dict
     pre_retrieval_strategies: list[str]
-    strategy_queries: dict[str, str]  # per-strategy optimized queries (strategy → query)
     optimized_queries: list[str]
     iteration_count: int
     max_iterations: int
@@ -73,8 +67,6 @@ class _GraphState(TypedDict, total=False):
     answer: str
     evidence: list[str]
     error: str | None
-    # Execution trace: each node appends one record so the full execution path
-    # can be reconstructed from a saved checkpoint.
     node_trace: Annotated[list[dict[str, Any]], operator.add]
 
 

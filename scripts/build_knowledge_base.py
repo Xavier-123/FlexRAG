@@ -9,19 +9,6 @@ resulting FAISS index to disk.
 The persisted index can later be loaded by
 :class:`~flexrag.retrievers.LlamaIndexRetriever` for retrieval.
 
-Configuration
--------------
-All settings are read from environment variables (or a ``.env`` file).
-The most important ones for this script are:
-
-    EMBEDDING_BASE_URL   – Base URL of the embedding model endpoint
-    EMBEDDING_API_KEY    – API key for the embedding endpoint
-    EMBEDDING_MODEL – Name of the embedding model
-
-    KNOWLEDGE_PERSIST_DIR   – Where to save the index  (default: ./knowledge_base)
-    KNOWLEDGE_CHUNK_SIZE    – Tokens per chunk           (default: 512)
-    KNOWLEDGE_CHUNK_OVERLAP – Token overlap between chunks (default: 50)
-
 Usage
 -----
 ::
@@ -47,10 +34,15 @@ import asyncio
 import logging
 import sys
 import time
-
-# Ensure the project root is on sys.path so ``flexrag`` can be imported when
-# running the script directly (e.g. ``python scripts/build_knowledge_base.py``).
+import pickle
 from pathlib import Path
+
+# [新增] 引入分词和BM25库 (需 pip install rank_bm25 jieba)
+try:
+    from rank_bm25 import BM25Okapi
+    import jieba
+except ImportError:
+    print("[WARNING] Missing sparse retrieval dependencies. Run: pip install rank_bm25 jieba")
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
@@ -59,6 +51,15 @@ if _PROJECT_ROOT not in sys.path:
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 稀疏检索辅助函数
+# ---------------------------------------------------------------------------
+def tokenize_text(text: str) -> list[str]:
+    """对文本进行分词。针对中文使用 jieba，英文按空格切分。"""
+    # 过滤掉空格和空字符
+    return [word for word in jieba.lcut(text) if word.strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +136,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable DEBUG-level logging.",
     )
+    # 允许用户选择是否开启稀疏检索
+    parser.add_argument("--enable-sparse", action="store_true", help="Build a BM25 sparse index alongside the FAISS dense index.")
 
     return parser.parse_args(argv)
 
@@ -174,7 +177,7 @@ async def build(args: argparse.Namespace) -> None:
     elapsed_load = time.perf_counter() - t0
     print(f"[INFO] Loaded {doc_count} document(s) in {elapsed_load:.1f}s.")
 
-    # ---- build ----
+    # ---- build dense index ----
     print(
         f"[INFO] Building index (chunk_size={chunk_size}, "
         f"chunk_overlap={chunk_overlap}) ..."
@@ -184,9 +187,51 @@ async def build(args: argparse.Namespace) -> None:
     elapsed_build = time.perf_counter() - t1
     print(f"[INFO] Index built in {elapsed_build:.1f}s.")
 
-    # ---- save ----
+    # ---- save dense index ----
     await builder.save(output_dir)
     print(f"[INFO] Knowledge base saved to '{output_dir}'.")
+
+    # ---- build & save sparse index (BM25) ----
+    if args.enable_sparse:
+        print("[INFO] Building Sparse BM25 index ...")
+        t2 = time.perf_counter()
+
+        # ⚠️ 注意: 这里需要获取分块后的文本。
+        # 你需要根据 flexrag 的具体 API 获取 document chunks。
+        # 假设 builder 有一个属性 `.chunks` 或方法 `.get_all_texts()`:
+        try:
+            # 请根据实际情况修改下方代码获取 chunks 的纯文本列表
+            if hasattr(builder, 'nodes'):  # LlamaIndex 风格
+                texts = [node.text for node in builder.nodes]
+            elif hasattr(builder, 'chunks'):  # 常见封装风格
+                texts = [chunk.text for chunk in builder.chunks]
+            elif hasattr(builder, "_raw_docs"):  # 常见封装风格
+                texts = [document.text for document in builder._raw_docs]
+            else:
+                # 兜底方案：如果 API 不同，请在此处适配
+                raise NotImplementedError("Please implement the method to extract text chunks from builder.")
+
+            # 1. 对所有 chunk 进行分词
+            tokenized_corpus = [tokenize_text(text) for text in texts]
+
+            # 2. 训练 BM25 模型
+            bm25_model = BM25Okapi(tokenized_corpus)
+
+            # 3. 将模型和原始文本/映射保存到本地
+            sparse_index_path = Path(output_dir) / "bm25_index.pkl"
+            sparse_data = {
+                "bm25_model": bm25_model,
+                "corpus_texts": texts  # 保存文本用于后续检索时返回内容
+            }
+            with open(sparse_index_path, "wb") as f:
+                pickle.dump(sparse_data, f)
+
+            elapsed_sparse = time.perf_counter() - t2
+            print(f"[INFO] Sparse BM25 Index built and saved to '{sparse_index_path}' in {elapsed_sparse:.1f}s.")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to build sparse index: {e}")
+
     print(f"[INFO] Total time: {time.perf_counter() - t0:.1f}s.")
 
 

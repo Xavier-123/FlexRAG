@@ -36,6 +36,8 @@ from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIG
     LLMQueryOptimizer, VLLMReranker, LlamaIndexRetriever
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
+from flexrag.components.pre_retrieval.composite_optimizer import CompositeQueryOptimizer
+
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +75,8 @@ class RAGPipeline:
             retriever: BaseRetriever,
             reranker: VLLMReranker,
             context_optimizer: LLMContextOptimizer,
-            query_optimizer: LLMQueryOptimizer,
+            # query_optimizer: LLMQueryOptimizer,
+            query_optimizer: CompositeQueryOptimizer,
             context_evaluator: LLMContextEvaluator,
             generator: OpenAIGenerator,
             settings: Settings,
@@ -274,7 +277,7 @@ class RAGPipeline:
             {
                 "query": query,
                 "original_query": query,
-                "current_query": "",
+                "current_queries": {},
                 "pre_retrieval_strategies": self._settings.pre_retrieval_strategies,
                 "optimized_queries": [],
                 "iteration_count": 0,
