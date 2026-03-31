@@ -36,7 +36,7 @@ from flexrag.core.schema import Document
 logger = logging.getLogger(__name__)
 
 
-class VLLMReranker(BaseReranker):
+class OpenAILikeReranker(BaseReranker):
     """Reranker that calls a vLLM cross-encoder endpoint.
 
     Sends all candidate documents to the vLLM rerank API in a single batch
@@ -53,7 +53,7 @@ class VLLMReranker(BaseReranker):
 
     Example::
 
-        reranker = VLLMReranker(
+        reranker = OpenAILikeReranker(
             base_url="http://localhost:8000",
             model="BAAI/bge-reranker-v2-m3",
             api_key="my-secret-key",
@@ -62,15 +62,20 @@ class VLLMReranker(BaseReranker):
     """
 
     def __init__(
-        self,
-        base_url: str,
-        model: str,
-        api_key: str | None = None,
-        top_k: int | None = 5,
-        http_client: Any | None = None,
+            self,
+            base_url: str,
+            model: str,
+            api_key: str | None = None,
+            top_k: int | None = 5,
+            http_client: Any | None = None,
     ) -> None:
-        # self._endpoint = base_url.rstrip("/") + "/v1/rerank"
-        self._endpoint = base_url
+        base_url = base_url.rstrip("/")
+        if base_url.endswith("/v1/rerank"):
+            self._endpoint = base_url
+        elif base_url.endswith("/v1"):
+            self._endpoint = base_url + "/rerank"
+        else:
+            self._endpoint = base_url + "/v1/rerank"
         self._model = model
         self._api_key = api_key
         self._top_k = top_k
@@ -81,9 +86,9 @@ class VLLMReranker(BaseReranker):
     # ------------------------------------------------------------------
 
     async def rerank(
-        self,
-        query: str,
-        documents: list[Document],
+            self,
+            query: str,
+            documents: list[Document],
     ) -> list[Document]:
         """Rerank *documents* against *query* via the vLLM rerank endpoint.
 

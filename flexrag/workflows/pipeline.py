@@ -33,10 +33,10 @@ from langchain_openai import ChatOpenAI
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.config import Settings
 from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, \
-     VLLMReranker, LlamaIndexRetriever
+     OpenAILikeReranker
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
-from flexrag.components.pre_retrieval.composite_optimizer import CompositeQueryOptimizer
+from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryRewriter
 
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class RAGPipeline:
     def __init__(
             self,
             retriever: BaseRetriever,
-            reranker: VLLMReranker,
+            reranker: OpenAILikeReranker,
             context_optimizer: LLMContextOptimizer,
             # query_optimizer: LLMQueryOptimizer,
             query_optimizer: CompositeQueryOptimizer,
@@ -166,7 +166,7 @@ class RAGPipeline:
         )
 
         # -- Reranker (vLLM cross-encoder) --
-        reranker = VLLMReranker(
+        reranker = OpenAILikeReranker(
             base_url=settings.reranker_base_url,
             model=settings.reranker_model,
             api_key=settings.reranker_api_key,
@@ -180,7 +180,13 @@ class RAGPipeline:
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
-        query_optimizer = LLMQueryOptimizer(llm=llm)
+        # query_optimizer = LLMQueryOptimizer(llm=llm)
+        query_optimizer = CompositeQueryOptimizer([
+            QueryRewriter(llm=llm),
+            # QueryExpander(llm=llm),
+            # TaskSplitter(llm=llm),
+            # TerminologyEnricher(llm=llm),
+        ])
         context_evaluator = LLMContextEvaluator(llm=llm)
 
         # -- Generator (vLLM Structured Output) --
@@ -278,7 +284,6 @@ class RAGPipeline:
                 "query": query,
                 "original_query": query,
                 "current_queries": {},
-                "pre_retrieval_strategies": self._settings.pre_retrieval_strategies,
                 "optimized_queries": [],
                 "iteration_count": 0,
                 "max_iterations": self._settings.max_iterations,

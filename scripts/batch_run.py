@@ -10,9 +10,14 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.core.config import Settings
 from flexrag.observability import setup_logging
-from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, VLLMReranker, LlamaIndexRetriever
+from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, OpenAILikeReranker
 from flexrag.workflows import RAGPipeline
-from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, TerminologyEnricher
+from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
+    TerminologyEnricher
+
+from flexrag.components.retrieval.FAISSRetriever import FAISSRetriever
+from flexrag.components.retrieval.BM25Retriever import BM25Retriever
+from flexrag.components.retrieval.HybridRetriever import HybridRetriever
 
 
 def is_debug():
@@ -22,16 +27,33 @@ def is_debug():
 # 1. 组装并初始化 Pipeline
 async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
     # 加载已有的知识库
-    retriever = LlamaIndexRetriever(
-        index=None,
-        embed_base_url=args.embedding_base_url,
-        embed_model_name=args.embedding_model,
-        embed_api_key=args.embedding_api_key,
-        top_k=args.top_k_retrieval,
+    # retriever = LlamaIndexRetriever(
+    #     index=None,
+    #     embed_base_url=args.embedding_base_url,
+    #     embed_model_name=args.embedding_model,
+    #     embed_api_key=args.embedding_api_key,
+    #     top_k=args.top_k_retrieval,
+    # )
+    retriever = HybridRetriever(
+        retrievers=[
+            FAISSRetriever(
+                index=None,
+                embed_base_url=args.embedding_base_url,
+                embed_model_name=args.embedding_model,
+                embed_api_key=args.embedding_api_key,
+                top_k=args.top_k_retrieval,
+                knowledge_persist_dir=args.knowledge_persist_dir,
+            ),
+            BM25Retriever(
+                # index=None,
+                top_k=args.top_k_retrieval,
+                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            )
+        ],
     )
-    await retriever.load_index(args.knowledge_persist_dir)
+    # await retriever.load_index(args.knowledge_persist_dir)
 
-    reranker = VLLMReranker(
+    reranker = OpenAILikeReranker(
         base_url=args.reranker_base_url,
         model=args.reranker_model,
         api_key=args.reranker_api_key,
@@ -46,9 +68,9 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
 
     query_optimizer = CompositeQueryOptimizer([
         QueryRewriter(llm=llm),
-        QueryExpander(llm=llm),
-        TaskSplitter(llm=llm),
-        TerminologyEnricher(llm=llm),
+        # QueryExpander(llm=llm),
+        # TaskSplitter(llm=llm),
+        # TerminologyEnricher(llm=llm),
     ])
 
     context_evaluator = LLMContextEvaluator(llm=llm)

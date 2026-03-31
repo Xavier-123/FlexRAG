@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 
 class BaseQueryOptimizer(ABC):
-    """Strategy interface for rewriting retrieval queries during iteration."""
+    """Strategy interface for opt retrieval queries during iteration."""
 
     def __init__(self):
         self._llm = None

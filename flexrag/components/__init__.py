@@ -4,13 +4,11 @@ Online RAG components layer.
 from flexrag.components.post_retrieval import LLMContextOptimizer
 from flexrag.components.judges import LLMContextEvaluator
 from flexrag.components.generation import OpenAIGenerator
-from flexrag.components.post_retrieval import VLLMReranker
-from flexrag.components.retrieval import LlamaIndexRetriever
+from flexrag.components.post_retrieval import OpenAILikeReranker
 
 __all__ = [
     "LLMContextOptimizer",
     "LLMContextEvaluator",
     "OpenAIGenerator",
-    "VLLMReranker",
-    "LlamaIndexRetriever",
+    "OpenAILikeReranker",
 ]

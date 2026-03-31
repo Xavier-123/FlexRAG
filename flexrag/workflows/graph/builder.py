@@ -52,7 +52,6 @@ class _GraphState(TypedDict, total=False):
     query: str
     original_query: str
     current_queries: dict
-    pre_retrieval_strategies: list[str]
     optimized_queries: list[str]
     iteration_count: int
     max_iterations: int

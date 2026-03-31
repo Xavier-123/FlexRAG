@@ -34,7 +34,7 @@ import asyncio
 import logging
 import sys
 import time
-import pickle
+import os
 from pathlib import Path
 
 # [新增] 引入分词和BM25库 (需 pip install rank_bm25 jieba)
@@ -137,7 +137,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Enable DEBUG-level logging.",
     )
     # 允许用户选择是否开启稀疏检索
-    parser.add_argument("--enable-sparse", action="store_true", help="Build a BM25 sparse index alongside the FAISS dense index.")
+    parser.add_argument("--enable-sparse", action="store_true",
+                        help="Build a BM25 sparse index alongside the FAISS dense index.")
 
     return parser.parse_args(argv)
 
@@ -211,20 +212,26 @@ async def build(args: argparse.Namespace) -> None:
                 # 兜底方案：如果 API 不同，请在此处适配
                 raise NotImplementedError("Please implement the method to extract text chunks from builder.")
 
-            # 1. 对所有 chunk 进行分词
-            tokenized_corpus = [tokenize_text(text) for text in texts]
+            from llama_index.core.node_parser import SentenceSplitter
+            from llama_index.retrievers.bm25 import BM25Retriever
+            # 将文档切分为 Nodes (节点)
+            # BM25Retriever 需要输入 Nodes
+            splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=50)
+            nodes = splitter.get_nodes_from_documents(builder._raw_docs)
 
-            # 2. 训练 BM25 模型
-            bm25_model = BM25Okapi(tokenized_corpus)
+            # 初始化 BM25Retriever
+            retriever = BM25Retriever.from_defaults(
+                nodes=nodes,
+                similarity_top_k=2,  # 设置返回的 Top-K 数量
+                tokenizer=tokenize_text  # 传入自定义的中文分词器
+            )
 
-            # 3. 将模型和原始文本/映射保存到本地
-            sparse_index_path = Path(output_dir) / "bm25_index.pkl"
-            sparse_data = {
-                "bm25_model": bm25_model,
-                "corpus_texts": texts  # 保存文本用于后续检索时返回内容
-            }
-            with open(sparse_index_path, "wb") as f:
-                pickle.dump(sparse_data, f)
+            # 持久化到本地目录
+
+            sparse_index_path = os.path.join(output_dir, "bm25_index")
+            os.makedirs(sparse_index_path, exist_ok=True)
+            retriever.persist(sparse_index_path)
+            print(f"BM25 索引已成功保存至 {Path(output_dir) / 'bm25_index'}\n")
 
             elapsed_sparse = time.perf_counter() - t2
             print(f"[INFO] Sparse BM25 Index built and saved to '{sparse_index_path}' in {elapsed_sparse:.1f}s.")

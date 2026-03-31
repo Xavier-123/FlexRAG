@@ -37,14 +37,9 @@ import os
 from typing import Any, List, Optional
 from pydantic import PrivateAttr
 
-from llama_index.core import Settings as LlamaSettings
-from llama_index.core import (
-    StorageContext,
-    VectorStoreIndex,
-    load_index_from_storage,
-)
+from llama_index.core import Settings, StorageContext, VectorStoreIndex, load_index_from_storage
 from llama_index.core.base.base_retriever import BaseRetriever as LlamaBaseRetriever
-from llama_index.core.schema import NodeWithScore, TextNode
+from llama_index.core.schema import NodeWithScore
 from llama_index.core.embeddings import BaseEmbedding
 
 from flexrag.core.abstractions import BaseRetriever
@@ -198,10 +193,6 @@ class LlamaIndexRetriever(BaseRetriever):
             top_k: int | None = 5,
             retrieve_strategy=None,
     ) -> None:
-        if retrieve_strategy is None:
-            retrieve_strategy = ["dense"]
-
-        # 稀疏检索
 
         self._embed_model = VLLMEmbedding(
             base_url=embed_base_url,
@@ -211,7 +202,7 @@ class LlamaIndexRetriever(BaseRetriever):
         self._top_k = top_k
         # Inject our custom embedding into the global LlamaIndex settings so
         # that the VectorStoreIndex uses it for both ingestion and querying.
-        LlamaSettings.embed_model = self._embed_model  # type: ignore[assignment]
+        Settings.embed_model = self._embed_model  # type: ignore[assignment]
 
         if index is None:
             logger.warning(
@@ -269,24 +260,24 @@ class LlamaIndexRetriever(BaseRetriever):
     # Public helpers
     # ------------------------------------------------------------------
 
-    def add_documents(self, texts: list[str], metadatas: list[dict] | None = None) -> None:
-        """Index a list of raw text strings.
-
-        Useful when you want to build the index programmatically rather than
-        passing a pre-built :class:`VectorStoreIndex`.
-
-        Args:
-            texts: Raw text chunks to add to the index.
-            metadatas: Optional metadata dicts (one per chunk).
-        """
-        metadatas = metadatas or [{}] * len(texts)
-        nodes = [
-            NodeWithScore(node=TextNode(text=t, metadata=m), score=1.0)
-            for t, m in zip(texts, metadatas)
-        ]
-        self._index.insert_nodes([n.node for n in nodes])
-        # Invalidate the cached retriever so it is rebuilt with the new nodes.
-        self._llama_retriever = None
+    # def add_documents(self, texts: list[str], metadatas: list[dict] | None = None) -> None:
+    #     """Index a list of raw text strings.
+    #
+    #     Useful when you want to build the index programmatically rather than
+    #     passing a pre-built :class:`VectorStoreIndex`.
+    #
+    #     Args:
+    #         texts: Raw text chunks to add to the index.
+    #         metadatas: Optional metadata dicts (one per chunk).
+    #     """
+    #     metadatas = metadatas or [{}] * len(texts)
+    #     nodes = [
+    #         NodeWithScore(node=TextNode(text=t, metadata=m), score=1.0)
+    #         for t, m in zip(texts, metadatas)
+    #     ]
+    #     self._index.insert_nodes([n.node for n in nodes])
+    #     # Invalidate the cached retriever so it is rebuilt with the new nodes.
+    #     self._llama_retriever = None
 
     # ------------------------------------------------------------------
     # BaseRetriever interface

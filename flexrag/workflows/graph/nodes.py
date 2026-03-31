@@ -21,9 +21,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker, BaseRetriever
-# from flexrag.core.abstractions import BaseQueryOptimizer
-from flexrag.components.pre_retrieval.base import BaseQueryOptimizer
+from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker
+from flexrag.components.pre_retrieval import BaseQueryOptimizer
+from flexrag.components.retrieval import BaseRetriever
 from flexrag.core.schema import Document
 from flexrag.core.config import settings
 
@@ -52,10 +52,7 @@ def make_query_optimizer_node(
         accumulated_context: list[str] = state.get("accumulated_context", [""])
         missing_info: str = state.get("missing_info", "")
         iteration_count: int = int(state.get("iteration_count", 0))
-        strategies: list[str] = state.get("pre_retrieval_strategies", ["simple"])  # Default to 'simple' if no router output
-        logger.info(
-            "[query_optimizer] iteration=%d  strategies=%s", iteration_count, strategies
-        )
+        logger.info("[query_optimizer] iteration=%d", iteration_count)
         try:
             optimized_queries, current_queries = await optimizer.run(
                 original_query=original_query,
@@ -154,7 +151,7 @@ def make_rerank_node(
         logger.info("-------- rerank node --------")
         if state.get("error"):
             return {}
-        query: str = state.get("current_query") or state.get("original_query") or state["query"]
+        query: str = state.get("original_query") or state["query"]
         raw_docs: list[dict] = state.get("retrieved_docs", [])
         documents = [Document(**d) for d in raw_docs]
         logger.info("[rerank] %d docs in → top_k=%d", len(documents), settings.top_k_rerank)
@@ -284,7 +281,7 @@ def make_generate_node(generator: BaseGenerator) -> Any:
             return {
                 "answer": output.answer,
                 "evidence": output.evidence,
-                "node_trace": [{"node": "generate", "query": query, "answer_len": len(output.answer), "evidence_count": len(output.evidence)}],
+                "node_trace": [{"node": "generate", "query": query, "answer": output.answer, "evidence": output.evidence}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[generate] failed: %s", exc)
