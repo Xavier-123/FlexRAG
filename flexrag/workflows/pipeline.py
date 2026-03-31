@@ -33,7 +33,7 @@ from langchain_openai import ChatOpenAI
 from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.config import Settings
 from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, \
-    LLMQueryOptimizer, VLLMReranker, LlamaIndexRetriever
+     VLLMReranker, LlamaIndexRetriever
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
 from flexrag.components.pre_retrieval.composite_optimizer import CompositeQueryOptimizer

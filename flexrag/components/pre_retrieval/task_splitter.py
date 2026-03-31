@@ -16,6 +16,7 @@ _SYSTEM_DECOMPOSITION = (
 class TaskSplitter(BaseQueryOptimizer):
     def __init__(self, llm: BaseChatModel):
         self._llm = llm
+        self.type = "split"
 
     async def run(
             self,
@@ -23,10 +24,12 @@ class TaskSplitter(BaseQueryOptimizer):
             accumulated_context: list[str],
             missing_info: str,
             previous_query: str = "",
+            previous_queries=None,
     ) -> dict:
 
         human_prompt = (
             f"原始问题: {original_query}\n"
+            f"上一轮优化后的Query: {previous_query}\n"
             f"已有信息: {accumulated_context or '无'}\n\n"
             f"缺失信息: {missing_info or '无'}\n\n"
             "请根据策略输出优化后的检索查询："

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 from .base import BaseQueryOptimizer
 
@@ -17,14 +16,18 @@ class CompositeQueryOptimizer(BaseQueryOptimizer):
             original_query: str,
             accumulated_context: list[str],
             missing_info: str,
-            previous_query: str = "",
+            previous_query=None,
+            previous_queries=None,
     ) -> tuple[list[str], dict]:
 
+        if previous_queries is None:
+            previous_queries = {}
         tasks = [
             optimizer.run(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
+                previous_query=previous_queries.get(optimizer.type, ""),
             )
             for optimizer in self.optimizers
         ]
@@ -63,7 +66,6 @@ class CompositeQueryOptimizer(BaseQueryOptimizer):
                 )
                 return queries
 
-        # simple / vague / professional: use the (single) optimized query
         query = optimized_query.strip()
         result = [query] if query else [original_query]
         logger.debug("Parsed 1 query (type=%s).", type)

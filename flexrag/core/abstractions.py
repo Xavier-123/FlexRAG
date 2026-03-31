@@ -131,91 +131,6 @@ class BaseContextEvaluator(ABC):
         """Evaluate if current context is sufficient for final answer generation."""
 
 
-# # ---------------------------------------------------------------------------
-# # Query transformation
-# # ---------------------------------------------------------------------------
-#
-#
-# class BaseQueryOptimizer(ABC):
-#     """Strategy interface for rewriting retrieval queries during iteration."""
-#
-#     @abstractmethod
-#     async def optimize_query(
-#         self,
-#         original_query: str,
-#         accumulated_context: list[str],
-#         missing_info: str,
-#         iteration_count: int,
-#         previous_query: str = "",
-#         query_type: str = "simple",
-#     ) -> str:
-#         """Return a retrieval-ready query for the current iteration.
-#
-#         Args:
-#             original_query: The user's original question.
-#             accumulated_context: Context collected in previous iterations.
-#             missing_info: Feedback on what information is still missing.
-#             iteration_count: Current iteration number.
-#             previous_query: The query used in the previous iteration.
-#             query_type: Query classification from the router ('simple', 'vague',
-#                 'complex', or 'professional'), used to select the optimisation
-#                 strategy.
-#         """
-#
-#     @abstractmethod
-#     def parse_optimized_query(
-#             self,
-#             original_query: str,
-#             optimized_query: str,
-#             query_type: str,
-#     ) -> list[str]:
-#         """Parse the raw optimizer output into a list of search queries."""
-#
-#     async def generate_optimized_queries(
-#             self,
-#             original_query: str,
-#             accumulated_context: list[str],
-#             missing_info: str,
-#             iteration_count: int,
-#             strategies: list[str] | None = None,
-#     ) -> list[str]:
-#         """Orchestrate concurrent optimization and generate the final deduplicated query list.
-#
-#         Returns:
-#             A deduplicated, ordered list of query strings:
-#             [original_query, simple_query, vague_query, complex_sub_q1, ...]
-#         """
-#         if strategies is None:
-#             strategies = ["simple", "vague", "complex", "professional"]
-#
-#         # 1. Concurrently run optimization for all strategies
-#         tasks = [
-#             self.optimize_query(
-#                 original_query=original_query,
-#                 accumulated_context=accumulated_context,
-#                 missing_info=missing_info,
-#                 iteration_count=iteration_count,
-#                 query_type=strategy,
-#             )
-#             for strategy in strategies
-#         ]
-#         results = await asyncio.gather(*tasks)
-#         strategy_queries = dict(zip(strategies, results))
-#
-#         # 2. Parse outputs, aggregate, and deduplicate
-#         all_queries: list[str] = [original_query]
-#         seen: set[str] = {original_query}
-#
-#         for strategy, optimized_text in strategy_queries.items():
-#             queries = self.parse_optimized_query(original_query, optimized_text, strategy)
-#             for q in queries:
-#                 if q and q not in seen:
-#                     seen.add(q)
-#                     all_queries.append(q)
-#
-#         return all_queries
-
-
 class BaseGenerator(ABC):
     """Strategy interface for answer generation.
 
@@ -318,7 +233,6 @@ __all__ = [
     "BaseReranker",
     "BaseContextOptimizer",
     "BaseContextEvaluator",
-    # "BaseQueryOptimizer",
     "BaseGenerator",
     "BaseKnowledgeBuilder",
 ]

@@ -46,9 +46,9 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
 
     query_optimizer = CompositeQueryOptimizer([
         QueryRewriter(llm=llm),
-        # QueryExpander(llm=llm),
+        QueryExpander(llm=llm),
         TaskSplitter(llm=llm),
-        # TerminologyEnricher(llm=llm),
+        TerminologyEnricher(llm=llm),
     ])
 
     context_evaluator = LLMContextEvaluator(llm=llm)

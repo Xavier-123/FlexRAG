@@ -61,6 +61,7 @@ def make_query_optimizer_node(
                 original_query=original_query,
                 accumulated_context=accumulated_context,
                 missing_info=missing_info,
+                previous_queries=state.get("current_queries", {}),
             )
             return {
                 "iteration_count": state["iteration_count"],
@@ -217,6 +218,38 @@ def make_optimize_context_node(
     return optimize_context_node
 
 
+def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
+    """Create the context-evaluator (judge) node function."""
+
+    async def context_evaluator_node(state: StateDict) -> StateDict:
+        logger.info("-------- context evaluator node --------")
+        if state.get("error"):
+            return {}
+        original_query: str = state.get("original_query") or state["query"]
+        context: str = state.get("optimized_context", "")
+        accumulated_context: list[str] = state.get("accumulated_context", [""])
+        logger.info("[context_evaluator] context_len=%d", len(context))
+        iteration_count = int(state.get("iteration_count", 0)) + 1
+        try:
+            result = await evaluator.evaluate(original_query=original_query, optimized_context=context, accumulated_context=accumulated_context)
+            return {
+                "iteration_count": iteration_count,
+                "context_sufficient": result.context_sufficient,
+                "missing_info": result.missing_info,
+                "judge_reason": result.judge_reason,
+                "accumulated_context": result.accumulated_context,
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "context_evaluator",
+                                "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason,
+                                "prompt": result.prompt_string
+                                }],
+            }
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[context_evaluator] failed: %s", exc)
+            return {"error": f"Context evaluation failed: {exc}"}
+
+    return context_evaluator_node
+
+
 def make_generate_node(generator: BaseGenerator) -> Any:
     """Create the answer-generation node function.
 
@@ -258,60 +291,3 @@ def make_generate_node(generator: BaseGenerator) -> Any:
             return {"error": f"Generation failed: {exc}"}
 
     return generate_node
-
-
-def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
-    """Create the context-evaluator (judge) node function."""
-
-    async def context_evaluator_node(state: StateDict) -> StateDict:
-        logger.info("-------- context evaluator node --------")
-        if state.get("error"):
-            return {}
-        original_query: str = state.get("original_query") or state["query"]
-        context: str = state.get("optimized_context", "")
-        accumulated_context: list[str] = state.get("accumulated_context", [""])
-        logger.info("[context_evaluator] context_len=%d", len(context))
-        iteration_count = int(state.get("iteration_count", 0)) + 1
-        try:
-            result = await evaluator.evaluate(original_query=original_query, optimized_context=context, accumulated_context=accumulated_context)
-            return {
-                "iteration_count": iteration_count,
-                "context_sufficient": result.context_sufficient,
-                "missing_info": result.missing_info,
-                "judge_reason": result.judge_reason,
-                "accumulated_context": result.accumulated_context,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "context_evaluator",
-                                "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason,
-                                "prompt": result.prompt_string
-                                }],
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("[context_evaluator] failed: %s", exc)
-            return {"error": f"Context evaluation failed: {exc}"}
-
-    return context_evaluator_node
-
-
-def make_analyze_missing_info_node() -> Any:
-    """Create the node that records feedback and increments iteration counter."""
-
-    async def analyze_missing_info_node(state: StateDict) -> StateDict:
-        logger.info("-------- analyze missing info node --------")
-        if state.get("error"):
-            return {}
-        missing_info: str = state.get("missing_info", "")
-        history: list[str] = list(state.get("missing_info_history", []))
-        if missing_info:
-            history.append(missing_info)
-        iteration_count = int(state.get("iteration_count", 0)) + 1
-
-        # 大模型分析query、上下文、missing_info，总结出下一轮检索的策略（比如：需要更专业的术语？需要更具体的细节？需要更宽泛的相关信息？等等），并写入 state["pre_retrieval_strategies"] 供下一轮 query_optimizer_node 使用。
-
-        return {
-            "iteration_count": iteration_count,
-            "missing_info_history": history,
-            # "missing_info_history": history,    # 优化建议
-            "node_trace": [{"node": "analyze_missing_info", "iteration_count": iteration_count, "missing_info": missing_info}],
-        }
-
-    return analyze_missing_info_node

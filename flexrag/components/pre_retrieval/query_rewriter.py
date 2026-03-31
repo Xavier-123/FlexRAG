@@ -18,17 +18,20 @@ _SYSTEM_REWRITE = (
 class QueryRewriter(BaseQueryOptimizer):
     def __init__(self, llm: BaseChatModel):
         self._llm = llm
+        self.type = "rewritten"
 
     async def run(
             self,
             original_query: str,
             accumulated_context: list[str],
             missing_info: str,
-            previous_query: str = "",
+            previous_query: str = "无",
+            previous_queries=None,
     ) -> dict:
 
         human_prompt = (
             f"原始问题: {original_query}\n"
+            f"上一轮优化后的Query: {previous_query}\n"
             f"已有信息: {accumulated_context or '无'}\n\n"
             f"缺失信息: {missing_info or '无'}\n\n"
             "请根据策略输出优化后的检索查询："

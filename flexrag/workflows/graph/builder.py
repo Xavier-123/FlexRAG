@@ -93,6 +93,8 @@ def build_rag_graph(
     retriever, reranker, or generator without touching this function.
 
     Args:
+        context_evaluator:
+        query_optimizer:
         retriever: Concrete retriever (e.g.
             :class:`~flexrag.components.retrieval.LlamaIndexRetriever`).
         reranker: Concrete reranker (e.g.
