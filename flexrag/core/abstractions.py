@@ -6,127 +6,23 @@ All base classes are defined in this single module for easy discovery.
 
 from __future__ import annotations
 
-import asyncio
 from abc import ABC, abstractmethod
 
-from flexrag.core.schema import ContextEvaluation, Document, GenOutput
-
-
-# ---------------------------------------------------------------------------
-# Retrieval
-# ---------------------------------------------------------------------------
-
-
-class BaseRetriever(ABC):
-    """Strategy interface for document retrieval.
-
-    All concrete retriever implementations must subclass this ABC and
-    implement :meth:`retrieve`.  This decouples the LangGraph node logic
-    from any specific vector store or retrieval library.
-
-    Example subclasses:
-        - :class:`flexrag.components.retrieval.LlamaIndexRetriever`
-    """
-
-    @abstractmethod
-    async def retrieve(self, query: str) -> list[Document]:
-        """Retrieve the most relevant documents for *query*.
-
-        Args:
-            query: The user's question or search string.
-
-        Returns:
-            A list of :class:`~flexrag.core.schema.Document` objects sorted by
-            descending relevance score.
-        """
-
-
-# ---------------------------------------------------------------------------
-# Reranking
-# ---------------------------------------------------------------------------
-
-
-class BaseReranker(ABC):
-    """Strategy interface for document reranking.
-
-    Concrete implementations call a reranker model (e.g. a cross-encoder
-    served via vLLM) and return a re-scored, truncated list of documents.
-
-    Example subclasses:
-        - :class:`flexrag.components.post_retrieval.VLLMReranker`
-    """
-
-    @abstractmethod
-    async def rerank(
-        self,
-        query: str,
-        documents: list[Document],
-    ) -> list[Document]:
-        """Rerank *documents* with respect to *query* and return top *top_k*.
-
-        Args:
-            query: The user's question used as the reranking reference.
-            documents: Candidate documents retrieved in the previous step.
-
-        Returns:
-            A list of at most *top_k* :class:`~flexrag.core.schema.Document`
-            objects sorted by descending rerank score.
-        """
-
-
-# ---------------------------------------------------------------------------
-# Post-retrieval: context optimisation
-# ---------------------------------------------------------------------------
-
-
-class BaseContextOptimizer(ABC):
-    """Strategy interface for context window optimisation.
-
-    After reranking the context optimiser prunes, summarises, or otherwise
-    transforms the selected documents into a compact string that fits within
-    the generator's token budget.
-
-    Example subclasses:
-        - :class:`flexrag.components.post_retrieval.LLMContextOptimizer`
-    """
-
-    @abstractmethod
-    async def optimize(
-        self,
-        query: str,
-        documents: list[Document],
-        accumulated_context: list[str],
-        max_tokens: int,
-    ) -> (str, str):
-        """Produce an optimised context string from *documents*.
-
-        Args:
-            query: The user's question (used to guide summarisation when
-                the optimiser is LLM-based).
-            documents: Reranked documents to be distilled.
-            accumulated_context: Context collected in previous iterations.
-            max_tokens: Approximate upper bound on the output length in tokens.
-
-        Returns:
-            A single string suitable for inclusion in the generator prompt.
-            传给大模型的提示词。
-        """
+from flexrag.core.schema import ContextEvaluation, GenOutput
 
 
 # ---------------------------------------------------------------------------
 # Judges (online context evaluation)
 # ---------------------------------------------------------------------------
-
-
 class BaseContextEvaluator(ABC):
     """Strategy interface for deciding if context can answer the query."""
 
     @abstractmethod
     async def evaluate(
-        self,
-        original_query: str,
-        optimized_context: str,
-        accumulated_context: list[str],
+            self,
+            original_query: str,
+            optimized_context: str,
+            accumulated_context: list[str],
     ) -> ContextEvaluation:
         """Evaluate if current context is sufficient for final answer generation."""
 
@@ -143,11 +39,11 @@ class BaseGenerator(ABC):
 
     @abstractmethod
     async def generate(
-        self,
-        query: str,
-        context: str,
-        accumulated_context: list[str],
-        source_documents: list[str],
+            self,
+            query: str,
+            context: str,
+            accumulated_context: list[str],
+            source_documents: list[str],
     ) -> GenOutput:
         """Generate a structured answer grounded in *context*.
 
@@ -169,7 +65,6 @@ class BaseGenerator(ABC):
 # Knowledge building (indexing)
 # ---------------------------------------------------------------------------
 
-
 class BaseKnowledgeBuilder(ABC):
     """Strategy interface for building and persisting a knowledge base.
 
@@ -181,7 +76,7 @@ class BaseKnowledgeBuilder(ABC):
     3. **Persist** – save the index to disk so it survives restarts.
 
     Retrieval from a persisted index is the responsibility of a
-    :class:`~flexrag.core.abstractions.BaseRetriever` implementation (e.g.
+    :class:`~flexrag.components.retrieval.BaseRetriever` implementation (e.g.
     :class:`~flexrag.components.retrieval.LlamaIndexRetriever`).
     """
 
@@ -199,9 +94,9 @@ class BaseKnowledgeBuilder(ABC):
 
     @abstractmethod
     async def build_index(
-        self,
-        chunk_size: int = 512,
-        chunk_overlap: int = 50,
+            self,
+            chunk_size: int = 512,
+            chunk_overlap: int = 50,
     ) -> None:
         """Chunk the loaded documents and build the vector index.
 
@@ -229,9 +124,6 @@ class BaseKnowledgeBuilder(ABC):
 
 
 __all__ = [
-    "BaseRetriever",
-    "BaseReranker",
-    "BaseContextOptimizer",
     "BaseContextEvaluator",
     "BaseGenerator",
     "BaseKnowledgeBuilder",

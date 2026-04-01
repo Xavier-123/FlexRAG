@@ -1,6 +1,5 @@
 import logging
 
-from typing import Dict, Any
 from .base import BaseQueryOptimizer
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage

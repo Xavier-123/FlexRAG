@@ -17,8 +17,8 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flexrag.core.abstractions import BaseContextOptimizer
 from flexrag.core.schema import Document
+from flexrag.components.post_retrieval.base import BasePostRetrieval
 
 logger = logging.getLogger(__name__)
 
@@ -31,40 +31,17 @@ _SYSTEM_PROMPT = (
 )
 
 _SYSTEM_PROMPT_ZH = (
-"你是一个精准的上下文提取专家。给定一个用户问题和若干文档段落，请仅提取并返回与回答该问题直接相关的句子或段落。"
-"请勿添加任何评论、引言或结语。"
-"不同提取片段之间请用空行分隔。"
+    "你是一个精准的上下文提取专家。给定一个用户问题和若干文档段落，请仅提取并返回与回答该问题直接相关的句子或段落。"
+    "请勿添加任何评论、引言或结语。"
+    "不同提取片段之间请用空行分隔。"
 )
 
-class LLMContextOptimizer(BaseContextOptimizer):
-    """Context optimiser powered by an LLM (e.g. GPT-4o).
 
-    Uses the LLM to selectively extract the most relevant portions of each
-    document so that the generator receives a dense, high-signal context
-    window.  Falls back to plain truncation when the LLM is unavailable or
-    returns an overly long response.
-
-    Args:
-        llm: A LangChain :class:`~langchain_core.language_models.BaseChatModel`
-            instance (e.g. ``ChatOpenAI(model="gpt-4o")``).
-        chars_per_token: Approximate character-to-token ratio used when
-            estimating token counts without a tokeniser.  Defaults to ``4``.
-
-    Example::
-
-        from langchain_openai import ChatOpenAI
-        optimizer = LLMContextOptimizer(llm=ChatOpenAI(model="gpt-4o"))
-        context = optimizer.optimize(
-            query="What is RAG?",
-            documents=reranked_docs,
-            max_tokens=3000,
-        )
-    """
-
+class LLMContextOptimizer(BasePostRetrieval):
     def __init__(
-        self,
-        llm: BaseChatModel,
-        chars_per_token: int = 4,
+            self,
+            llm: BaseChatModel,
+            chars_per_token: int = 2,
     ) -> None:
         self._llm = llm
         self._chars_per_token = chars_per_token
@@ -74,11 +51,11 @@ class LLMContextOptimizer(BaseContextOptimizer):
     # ------------------------------------------------------------------
 
     async def optimize(
-        self,
-        query: str,
-        documents: list[Document],
-        accumulated_context: list[str],
-        max_tokens: int,
+            self,
+            query: str,
+            documents: list[Document],
+            accumulated_context: list[str],
+            max_tokens: int = 8192,
     ) -> (str, str):
         """Extract relevant passages from *documents* using the LLM.
 

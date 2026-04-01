@@ -12,12 +12,11 @@ from flexrag.core.config import Settings
 from flexrag.observability import setup_logging
 from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, OpenAILikeReranker
 from flexrag.workflows import RAGPipeline
-from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
+from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
+from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 
-from flexrag.components.retrieval.FAISSRetriever import FAISSRetriever
-from flexrag.components.retrieval.BM25Retriever import BM25Retriever
-from flexrag.components.retrieval.HybridRetriever import HybridRetriever
+from flexrag.components.retrieval import FAISSRetriever, BM25Retriever, HybridRetriever
 
 
 def is_debug():
@@ -26,39 +25,6 @@ def is_debug():
 
 # 1. 组装并初始化 Pipeline
 async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
-    # 加载已有的知识库
-    # retriever = LlamaIndexRetriever(
-    #     index=None,
-    #     embed_base_url=args.embedding_base_url,
-    #     embed_model_name=args.embedding_model,
-    #     embed_api_key=args.embedding_api_key,
-    #     top_k=args.top_k_retrieval,
-    # )
-    retriever = HybridRetriever(
-        retrievers=[
-            FAISSRetriever(
-                index=None,
-                embed_base_url=args.embedding_base_url,
-                embed_model_name=args.embedding_model,
-                embed_api_key=args.embedding_api_key,
-                top_k=args.top_k_retrieval,
-                knowledge_persist_dir=args.knowledge_persist_dir,
-            ),
-            BM25Retriever(
-                # index=None,
-                top_k=args.top_k_retrieval,
-                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
-            )
-        ],
-    )
-    # await retriever.load_index(args.knowledge_persist_dir)
-
-    reranker = OpenAILikeReranker(
-        base_url=args.reranker_base_url,
-        model=args.reranker_model,
-        api_key=args.reranker_api_key,
-        top_k=args.top_k_rerank,
-    )
     llm = ChatOpenAI(
         model=args.llm_model,
         api_key=args.llm_api_key,
@@ -66,19 +32,46 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         temperature=0.0,
     )
 
-    query_optimizer = CompositeQueryOptimizer([
-        QueryRewriter(llm=llm),
+    pre_retrieval_optimizer = PreQueryOptimizer([
+        # QueryRewriter(llm=llm),
         # QueryExpander(llm=llm),
         # TaskSplitter(llm=llm),
         # TerminologyEnricher(llm=llm),
     ])
 
+    retriever = HybridRetriever(
+        retrievers=[
+            # FAISSRetriever(
+            #     index=None,
+            #     embed_base_url=args.embedding_base_url,
+            #     embed_model_name=args.embedding_model,
+            #     embed_api_key=args.embedding_api_key,
+            #     top_k=args.top_k_retrieval,
+            #     knowledge_persist_dir=args.knowledge_persist_dir,
+            # ),
+            BM25Retriever(
+                top_k=args.top_k_retrieval,
+                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            )
+        ],
+    )
+
+    post_retrieval_optimizer = PostRetrieval([
+        OpenAILikeReranker(
+            base_url=args.reranker_base_url,
+            model=args.reranker_model,
+            api_key=args.reranker_api_key,
+            top_k=args.top_k_rerank
+        ),
+        LLMContextOptimizer(llm=llm)
+    ])
+
     context_evaluator = LLMContextEvaluator(llm=llm)
+
     pipeline = RAGPipeline(
+        pre_retrieval_optimizer=pre_retrieval_optimizer,
         retriever=retriever,
-        reranker=reranker,
-        context_optimizer=LLMContextOptimizer(llm=llm),
-        query_optimizer=query_optimizer,
+        post_retrieval_optimizer=post_retrieval_optimizer,
         context_evaluator=context_evaluator,
         generator=OpenAIGenerator(
             model=args.llm_model,

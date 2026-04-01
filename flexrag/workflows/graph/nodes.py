@@ -21,9 +21,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker
-from flexrag.components.pre_retrieval import BaseQueryOptimizer
+from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
+from flexrag.components.pre_retrieval import PreQueryOptimizer
 from flexrag.components.retrieval import BaseRetriever
+from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.core.schema import Document
 from flexrag.core.config import settings
 
@@ -39,13 +40,13 @@ StateDict = dict[str, Any]
 # Node factories
 # ---------------------------------------------------------------------------
 
-def make_query_optimizer_node(
-    optimizer: BaseQueryOptimizer,
+def make_pre_retrieval_optimizer_node(
+    optimizer: PreQueryOptimizer,
 ) -> Any:
     """Create the query-optimisation node function."""
 
-    async def query_optimizer_node(state: StateDict) -> StateDict:
-        logger.info("-------- query optimizer node --------")
+    async def pre_retrieval_optimizer_node(state: StateDict) -> StateDict:
+        logger.info("-------- pre retrieval optimizer node --------")
         if state.get("error"):
             return {}
         original_query: str = state.get("original_query") or state["query"]
@@ -77,7 +78,7 @@ def make_query_optimizer_node(
             logger.exception("[query_optimizer] failed: %s", exc)
             return {"error": f"Query optimization failed: {exc}"}
 
-    return query_optimizer_node
+    return pre_retrieval_optimizer_node
 
 
 def make_retrieve_node(
@@ -86,7 +87,7 @@ def make_retrieve_node(
     """Create the retrieval node function.
 
     Args:
-        retriever: A concrete :class:`~flexrag.core.abstractions.BaseRetriever`.
+        retriever: A concrete :class:`~flexrag.components.retrieval.BaseRetriever`.
 
     Returns:
         A callable compatible with :meth:`StateGraph.add_node`.
@@ -127,92 +128,46 @@ def make_retrieve_node(
     return retrieve_node
 
 
-def make_rerank_node(
-    reranker: BaseReranker,
-) -> Any:
-    """Create the reranking node function.
-
-    Args:
-        reranker: A concrete :class:`~flexrag.core.abstractions.BaseReranker`.
-
-    Returns:
-        A callable compatible with :meth:`StateGraph.add_node`.
-    """
-
-    async def rerank_node(state: StateDict) -> StateDict:
-        """Rerank retrieved documents and keep the top results.
-
-        Reads:
-            ``state["query"]``, ``state["retrieved_docs"]``
-
-        Writes:
-            ``state["reranked_docs"]``
-        """
-        logger.info("-------- rerank node --------")
-        if state.get("error"):
-            return {}
-        query: str = state.get("original_query") or state["query"]
-        raw_docs: list[dict] = state.get("retrieved_docs", [])
-        documents = [Document(**d) for d in raw_docs]
-        logger.info("[rerank] %d docs in → top_k=%d", len(documents), settings.top_k_rerank)
-        try:
-            reranked: list[Document] = await reranker.rerank(
-                query, documents
-            )
-            reranked_docs = [d.model_dump() for d in reranked]
-            return {
-                "reranked_docs": reranked_docs,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "reranked_docs": reranked_docs}],
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("[rerank] failed: %s", exc)
-            return {"error": f"Reranking failed: {exc}"}
-
-    return rerank_node
-
-
-def make_optimize_context_node(
-    optimizer: BaseContextOptimizer,
+def make_post_retrieval_optimizer_node(
+    optimizer: PostRetrieval,
     max_tokens: int,
 ) -> Any:
-    """Create the context-optimisation node function.
-
-    Args:
-        optimizer: A concrete :class:`~flexrag.core.abstractions.BaseContextOptimizer`.
-        max_tokens: Token budget for the optimised context.
-
-    Returns:
-        A callable compatible with :meth:`StateGraph.add_node`.
-    """
-
-    async def optimize_context_node(state: StateDict) -> StateDict:
-        """Distil reranked documents into a compact context string.
-
-        Reads:
-            ``state["query"]``, ``state["reranked_docs"]``
-
-        Writes:
-            ``state["optimized_context"]``
-        """
-        logger.info("-------- optimize context node --------")
+    logger.info("-------- post retrieval optimizer node --------")
+    async def post_retrieval_optimizer_node(state: StateDict) -> StateDict:
         if state.get("error"):
             return {}
         query: str = state.get("current_query") or state.get("original_query") or state["query"]
         accumulated_context: list[str] = state.get("accumulated_context")
-        raw_docs: list[dict] = state.get("reranked_docs", [])
+        raw_docs: list[dict] = state.get("retrieved_docs", [])
         documents = [Document(**d) for d in raw_docs]
         logger.info("[optimize_context] %d docs  max_tokens=%d", len(documents), max_tokens)
-        try:
-            context, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens=max_tokens)
-            return {
-                "optimized_context": context,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "context_out": context}],
-            }
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("[optimize_context] failed: %s", exc)
-            return {"error": f"Context optimisation failed: {exc}"}
 
-    return optimize_context_node
+        try:
+            optimized_result = await optimizer.optimize(
+                query=query, documents=documents, accumulated_context=accumulated_context, max_tokens=max_tokens
+            )
+
+            if isinstance(optimized_result, tuple) and len(optimized_result) == 2:
+                # LLMContextOptimizer case
+                optimized_query, prompt_string = optimized_result
+                return {
+                    "current_query": optimized_query,
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_query": optimized_query}],
+                }
+            elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
+                # OpenAILikeReranker case
+                reranked_docs = [d.model_dump() for d in optimized_result]
+                return {
+                    "reranked_docs": reranked_docs,
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "reranked_docs": reranked_docs}],
+                }
+
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("[rerank] failed: %s", exc)
+            return {"error": f"Reranking failed: {exc}"}
+
+        return state
+    return post_retrieval_optimizer_node
 
 
 def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:

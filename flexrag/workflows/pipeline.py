@@ -25,18 +25,20 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import os
 import uuid
 from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
 
-from flexrag.core.abstractions import BaseRetriever
 from flexrag.core.config import Settings
 from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, \
      OpenAILikeReranker
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
-from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryRewriter
+from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter
+from flexrag.components.retrieval import BaseRetriever, HybridRetriever, BM25Retriever, FAISSRetriever
+from flexrag.components.post_retrieval import BasePostRetrieval, PostRetrieval
 
 
 logger = logging.getLogger(__name__)
@@ -57,8 +59,6 @@ class RAGPipeline:
 
     Args:
         retriever: :class:`~flexrag.components.retrieval.LlamaIndexRetriever` instance.
-        reranker: :class:`~flexrag.components.post_retrieval.VLLMReranker` instance.
-        context_optimizer: :class:`~flexrag.components.post_retrieval.LLMContextOptimizer`.        generator: :class:`~flexrag.components.generation.OpenAIGenerator` instance.
         settings: :class:`~flexrag.core.config.Settings` driving numeric hyper-params.
         checkpoint_db_path: Optional path to a SQLite database file used to
             persist LangGraph state checkpoints after every node.  When set,
@@ -72,11 +72,9 @@ class RAGPipeline:
 
     def __init__(
             self,
+            pre_retrieval_optimizer: PreQueryOptimizer,
             retriever: BaseRetriever,
-            reranker: OpenAILikeReranker,
-            context_optimizer: LLMContextOptimizer,
-            # query_optimizer: LLMQueryOptimizer,
-            query_optimizer: CompositeQueryOptimizer,
+            post_retrieval_optimizer: PostRetrieval,
             context_evaluator: LLMContextEvaluator,
             generator: OpenAIGenerator,
             settings: Settings,
@@ -115,10 +113,9 @@ class RAGPipeline:
                 )
 
         self._graph = build_rag_graph(
+            pre_retrieval_optimizer=pre_retrieval_optimizer,
             retriever=retriever,
-            reranker=reranker,
-            context_optimizer=context_optimizer,
-            query_optimizer=query_optimizer,
+            post_retrieval_optimizer=post_retrieval_optimizer,
             context_evaluator=context_evaluator,
             generator=generator,
             context_max_tokens=settings.context_max_tokens,
@@ -158,11 +155,21 @@ class RAGPipeline:
             settings = Settings()
 
         # -- Retriever (LlamaIndex + vLLM embeddings) --
-        retriever = LlamaIndexRetriever(
-            index=None,
-            embed_base_url=settings.embedding_base_url,
-            embed_model_name=settings.embedding_model,
-            embed_api_key=settings.embedding_api_key,
+        retriever = HybridRetriever(
+            retrievers=[
+                # FAISSRetriever(
+                #     index=None,
+                #     embed_base_url=settings.embedding_base_url,
+                #     embed_model_name=settings.embedding_model,
+                #     embed_api_key=settings.embedding_api_key,
+                #     top_k=settings.top_k_retrieval,
+                #     knowledge_persist_dir=settings.knowledge_persist_dir,
+                # ),
+                BM25Retriever(
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=os.path.join(settings.knowledge_persist_dir, "bm25_index"),
+                )
+            ],
         )
 
         # -- Reranker (vLLM cross-encoder) --
@@ -180,8 +187,7 @@ class RAGPipeline:
             temperature=0.0,
         )
         context_optimizer = LLMContextOptimizer(llm=llm)
-        # query_optimizer = LLMQueryOptimizer(llm=llm)
-        query_optimizer = CompositeQueryOptimizer([
+        query_optimizer = PreQueryOptimizer([
             QueryRewriter(llm=llm),
             # QueryExpander(llm=llm),
             # TaskSplitter(llm=llm),

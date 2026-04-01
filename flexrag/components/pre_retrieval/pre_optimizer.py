@@ -1,13 +1,13 @@
 import asyncio
 import logging
 import re
-from typing import Dict, Any, List
+from typing import List
 from .base import BaseQueryOptimizer
 
 logger = logging.getLogger(__name__)
 
 
-class CompositeQueryOptimizer(BaseQueryOptimizer):
+class PreQueryOptimizer(BaseQueryOptimizer):
     def __init__(self, optimizers: List[BaseQueryOptimizer]):
         self.optimizers = optimizers
 

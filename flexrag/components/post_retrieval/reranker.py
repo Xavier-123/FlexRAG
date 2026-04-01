@@ -1,66 +1,16 @@
-"""
-vLLM-backed reranker implementation.
-
-Calls the ``/v1/rerank`` endpoint exposed by a vLLM server that serves a
-cross-encoder reranker model (e.g. ``BAAI/bge-reranker-v2-m3``).
-
-The endpoint follows the Cohere-compatible rerank API:
-
-.. code-block:: json
-
-    POST /v1/rerank
-    {
-        "model": "BAAI/bge-reranker-v2-m3",
-        "query": "What is RAG?",
-        "documents": ["doc text 1", "doc text 2", ...]
-    }
-
-    Response:
-    {
-        "results": [
-            {"index": 0, "relevance_score": 0.95},
-            ...
-        ]
-    }
-"""
-
 from __future__ import annotations
 
 import logging
 import httpx
 from typing import Any
 
-from flexrag.core.abstractions import BaseReranker
 from flexrag.core.schema import Document
+from flexrag.components.post_retrieval.base import BasePostRetrieval
 
 logger = logging.getLogger(__name__)
 
 
-class OpenAILikeReranker(BaseReranker):
-    """Reranker that calls a vLLM cross-encoder endpoint.
-
-    Sends all candidate documents to the vLLM rerank API in a single batch
-    request and returns the top *top_k* documents sorted by descending
-    relevance score.
-
-    Args:
-        base_url: Base URL of the vLLM server.
-        model: Name of the reranker model deployed on the server.
-        api_key: Optional API key sent as ``Authorization: Bearer <api_key>``
-            for servers that require authentication.
-        http_client: Optional pre-built :class:`httpx.AsyncClient` (useful for
-            testing / dependency injection).
-
-    Example::
-
-        reranker = OpenAILikeReranker(
-            base_url="http://localhost:8000",
-            model="BAAI/bge-reranker-v2-m3",
-            api_key="my-secret-key",
-        )
-        top_docs = await reranker.rerank(query="What is RAG?", documents=docs, top_k=3)
-    """
-
+class OpenAILikeReranker(BasePostRetrieval):
     def __init__(
             self,
             base_url: str,
@@ -81,28 +31,13 @@ class OpenAILikeReranker(BaseReranker):
         self._top_k = top_k
         self._client: httpx.AsyncClient = http_client or httpx.AsyncClient(timeout=60.0)
 
-    # ------------------------------------------------------------------
-    # BaseReranker interface
-    # ------------------------------------------------------------------
-
-    async def rerank(
+    async def optimize(
             self,
             query: str,
             documents: list[Document],
+            accumulated_context: list[str],
+            max_tokens: int,
     ) -> list[Document]:
-        """Rerank *documents* against *query* via the vLLM rerank endpoint.
-
-        Args:
-            query: The user's question.
-            documents: Candidate documents to score.
-
-        Returns:
-            Up to *top_k* :class:`~flexrag.core.schema.Document` objects sorted by
-            descending relevance score.
-
-        Raises:
-            httpx.HTTPStatusError: If the vLLM server returns a non-2xx status.
-        """
         if not documents:
             return []
 

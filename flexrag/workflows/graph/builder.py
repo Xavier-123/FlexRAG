@@ -18,14 +18,15 @@ from typing import Any, Literal, Optional, Annotated
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
-from flexrag.core.abstractions import BaseContextOptimizer, BaseContextEvaluator, BaseGenerator, BaseReranker, BaseRetriever
-from flexrag.components.pre_retrieval import BaseQueryOptimizer
+from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
+from flexrag.components.pre_retrieval import PreQueryOptimizer
+from flexrag.components.retrieval import BaseRetriever
+from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.workflows.graph.nodes import (
     make_context_evaluator_node,
     make_generate_node,
-    make_optimize_context_node,
-    make_query_optimizer_node,
-    make_rerank_node,
+    make_post_retrieval_optimizer_node,
+    make_pre_retrieval_optimizer_node,
     make_retrieve_node,
 )
 
@@ -61,7 +62,7 @@ class _GraphState(TypedDict, total=False):
     judge_reason: str
     retrieved_docs: list[dict[str, Any]]
     reranked_docs: list[dict[str, Any]]
-    optimized_context: str    # 当前这一轮提取的上下文
+    optimized_context: str  # 当前这一轮提取的上下文
     accumulated_context: Annotated[list[str], operator.add]  # 记录所有迭代轮次中积累的“已有 Context”
     answer: str
     evidence: list[str]
@@ -75,15 +76,14 @@ class _GraphState(TypedDict, total=False):
 
 
 def build_rag_graph(
-    retriever: BaseRetriever,
-    reranker: BaseReranker,
-    context_optimizer: BaseContextOptimizer,
-    query_optimizer: BaseQueryOptimizer,
-    context_evaluator: BaseContextEvaluator,
-    generator: BaseGenerator,
-    context_max_tokens: int = 3000,
-    draw_image_path: Optional[str] = None,
-    checkpointer: Optional[BaseCheckpointSaver] = None,
+        pre_retrieval_optimizer: PreQueryOptimizer,
+        retriever: BaseRetriever,
+        post_retrieval_optimizer: PostRetrieval,
+        context_evaluator: BaseContextEvaluator,
+        generator: BaseGenerator,
+        context_max_tokens: int = 16000,
+        draw_image_path: Optional[str] = None,
+        checkpointer: Optional[BaseCheckpointSaver] = None,
 ) -> Any:
     """Assemble and compile the FlexRAG LangGraph StateGraph.
 
@@ -92,14 +92,11 @@ def build_rag_graph(
     retriever, reranker, or generator without touching this function.
 
     Args:
+        pre_retrieval_optimizer:
+        post_retrieval_optimizer:
         context_evaluator:
-        query_optimizer:
         retriever: Concrete retriever (e.g.
             :class:`~flexrag.components.retrieval.LlamaIndexRetriever`).
-        reranker: Concrete reranker (e.g.
-            :class:`~flexrag.components.post_retrieval.VLLMReranker`).
-        context_optimizer: Concrete context optimiser (e.g.
-            :class:`~flexrag.components.post_retrieval.LLMContextOptimizer`).
         generator: Concrete generator (e.g.
             :class:`~flexrag.components.generation.OpenAIGenerator`).
         context_max_tokens: Token budget for the context window.
@@ -128,40 +125,48 @@ def build_rag_graph(
         print(result["evidence"])
     """
     # ---- Create node callables ----
-    query_optimizer_node = make_query_optimizer_node(query_optimizer)
+    pre_retrieval_optimizer_node = make_pre_retrieval_optimizer_node(pre_retrieval_optimizer)
     retrieve_node = make_retrieve_node(retriever)
-    rerank_node = make_rerank_node(reranker)
-    optimize_context_node = make_optimize_context_node(
-        context_optimizer, max_tokens=context_max_tokens
-    )
+    post_retrieval_optimizer_node = make_post_retrieval_optimizer_node(post_retrieval_optimizer, context_max_tokens)
     context_evaluator_node = make_context_evaluator_node(context_evaluator)
     generate_node = make_generate_node(generator)
 
     # ---- Build the graph ----
     graph = StateGraph(_GraphState)
 
-    graph.add_node("query_optimizer", query_optimizer_node)
+    graph.add_node("pre_retrieval_optimizer", pre_retrieval_optimizer_node)
     graph.add_node("retrieve", retrieve_node)
-    graph.add_node("rerank", rerank_node)
-    graph.add_node("optimize_context", optimize_context_node)
+    graph.add_node("post_retrieval_optimizer", post_retrieval_optimizer_node)
     graph.add_node("context_evaluator", context_evaluator_node)
     graph.add_node("generate", generate_node)
+    # graph.add_node("reflector", reflect_node)    # 反思与评估
 
     # ---- Wire up edges ----
-    graph.add_edge(START, "query_optimizer")
-    graph.add_edge("query_optimizer", "retrieve")
-    graph.add_edge("retrieve", "rerank")
-    graph.add_edge("rerank", "optimize_context")
-    graph.add_edge("optimize_context", "context_evaluator")
+    graph.add_edge(START, "pre_retrieval_optimizer")
+    graph.add_edge("pre_retrieval_optimizer", "retrieve")
+    graph.add_edge("retrieve", "post_retrieval_optimizer")
+    graph.add_edge("post_retrieval_optimizer", "context_evaluator")
     graph.add_conditional_edges(
         "context_evaluator",
         _route_after_context_evaluator,
         {
             "generate": "generate",
-            "query_optimizer": "query_optimizer",
+            "pre_retrieval_optimizer": "pre_retrieval_optimizer",
         },
     )
     graph.add_edge("generate", END)
+
+    # graph.add_edge("generate", "reflector")
+    #
+    # # 反思节点决定是结束还是重新回炉
+    # graph.add_conditional_edges(
+    #     "reflector",
+    #     check_quality,
+    #     {
+    #         "rewrite_and_retry": "agent",  # 方案不佳，带着反馈回到 Agent 重新思考和检索
+    #         "finish": END  # 方案完美，流程结束
+    #     }
+    # )
 
     logger.debug("Agentic RAG graph compiled with %d nodes", len(graph.nodes))
     compiled_graph = graph.compile(checkpointer=checkpointer)
@@ -183,13 +188,21 @@ def build_rag_graph(
 
 
 def _route_after_context_evaluator(
-    state: _GraphState,
-) -> Literal["generate", "query_optimizer"]:
+        state: _GraphState,
+) -> Literal["generate", "pre_retrieval_optimizer"]:
     if state.get("context_sufficient", False):
         return "generate"
 
     iteration_count = int(state.get("iteration_count", 0))
     max_iterations = int(state.get("max_iterations", 3))
     if iteration_count < max_iterations:
-        return "query_optimizer"
+        return "pre_retrieval_optimizer"
     return "generate"
+
+# def check_quality(state: _GraphState) -> str:
+#     """判断反思节点的结果，决定是否重做"""
+#     # 如果反思节点追加了带有反馈意见的消息，说明需要重做
+#     last_message = state["messages"][-1]
+#     if isinstance(last_message, HumanMessage) and "调整搜索策略" in last_message.content:
+#         return "rewrite_and_retry"
+#     return END
