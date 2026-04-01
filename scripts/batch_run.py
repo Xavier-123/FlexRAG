@@ -15,8 +15,7 @@ from flexrag.workflows import RAGPipeline
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
 from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
-
-from flexrag.components.retrieval import FAISSRetriever, BM25Retriever, HybridRetriever
+from flexrag.components.retrieval import FAISSRetriever, BM25Retriever, HybridRetriever, GraphRetriever
 
 
 def is_debug():
@@ -47,11 +46,21 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
             #     embed_model_name=args.embedding_model,
             #     embed_api_key=args.embedding_api_key,
             #     top_k=args.top_k_retrieval,
-            #     knowledge_persist_dir=args.knowledge_persist_dir,
+            #     persist_dir=args.knowledge_persist_dir,
             # ),
-            BM25Retriever(
-                top_k=args.top_k_retrieval,
-                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            # BM25Retriever(
+            #     top_k=args.top_k_retrieval,
+            #     persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            # ),
+            GraphRetriever(
+                llm_model_name=args.llm_model,
+                llm_base_url=args.llm_base_url,
+                llm_api_key=args.llm_api_key,
+                embed_model_name=args.embedding_model,
+                embed_base_url=args.embedding_base_url,
+                embed_api_key=args.embedding_api_key,
+                # top_k=args.top_k_retrieval,
+                persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
             )
         ],
     )

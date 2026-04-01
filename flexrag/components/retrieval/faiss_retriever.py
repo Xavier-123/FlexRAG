@@ -9,7 +9,7 @@ from llama_index.core import StorageContext, VectorStoreIndex, load_index_from_s
 from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import NodeWithScore
 
-from flexrag.components.retrieval import BaseRetriever, OpenAILikeEmbedding
+from flexrag.components.retrieval import BaseFlexRetriever, OpenAILikeEmbedding
 from flexrag.core.schema import Document
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 _FAISS_FILE = "faiss_index.bin"
 
 
-class FAISSRetriever(BaseRetriever):
+class FAISSRetriever(BaseFlexRetriever):
 
     def __init__(
             self,
@@ -27,7 +27,7 @@ class FAISSRetriever(BaseRetriever):
             embed_model_name: str,
             embed_api_key: str | None = None,
             top_k: int | None = 5,
-            knowledge_persist_dir: str | None = None,
+            persist_dir: str | None = None,
     ) -> None:
         self._top_k = top_k
         self._embed_model = OpenAILikeEmbedding(model=embed_model_name, base_url=embed_base_url, api_key=embed_api_key)
@@ -42,8 +42,8 @@ class FAISSRetriever(BaseRetriever):
 
         self._faiss_retriever: BaseRetriever | None = None
 
-        self._knowledge_persist_dir = knowledge_persist_dir
-        self._load_index(knowledge_persist_dir)
+        self._knowledge_persist_dir = persist_dir
+        self._load_index(persist_dir)
 
     # ------------------------------------------------------------------
     # Index loading

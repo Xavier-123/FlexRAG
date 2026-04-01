@@ -110,7 +110,7 @@ class OpenAILikeEmbedding(BaseEmbedding):
         return [item["embedding"] for item in data]
 
 
-class BaseRetriever(ABC):
+class BaseFlexRetriever(ABC):
     """Strategy interface for document retrieval.
 
     All concrete retriever implementations must subclass this ABC and

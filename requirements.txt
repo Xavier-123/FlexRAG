@@ -7,6 +7,8 @@ langchain-core>=0.2.0
 
 # retriever
 llama-index-core>=0.10.0
+llama-index-llms-langchain
+llama-index-graph-stores-neo4j
 llama-index-embeddings-openai>=0.1.0
 llama-index-vector-stores-faiss>=0.1.0
 llama-index-retrievers-bm25
@@ -24,6 +26,7 @@ httpx>=0.27.0
 
 # Utilities
 python-dotenv>=1.0.0
+nest-asyncio
 
 # UI
 gradio

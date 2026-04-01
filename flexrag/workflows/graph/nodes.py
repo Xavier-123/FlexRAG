@@ -23,7 +23,7 @@ from typing import Any
 
 from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
 from flexrag.components.pre_retrieval import PreQueryOptimizer
-from flexrag.components.retrieval import BaseRetriever
+from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.core.schema import Document
 from flexrag.core.config import settings
@@ -82,7 +82,7 @@ def make_pre_retrieval_optimizer_node(
 
 
 def make_retrieve_node(
-    retriever: BaseRetriever,
+    retriever: BaseFlexRetriever,
 ) -> Any:
     """Create the retrieval node function.
 
@@ -132,8 +132,9 @@ def make_post_retrieval_optimizer_node(
     optimizer: PostRetrieval,
     max_tokens: int,
 ) -> Any:
-    logger.info("-------- post retrieval optimizer node --------")
+
     async def post_retrieval_optimizer_node(state: StateDict) -> StateDict:
+        logger.info("-------- post retrieval optimizer node --------")
         if state.get("error"):
             return {}
         query: str = state.get("current_query") or state.get("original_query") or state["query"]

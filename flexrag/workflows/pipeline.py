@@ -37,7 +37,7 @@ from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIG
 from flexrag.core.schema import RAGOutput
 from flexrag.workflows.graph.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter
-from flexrag.components.retrieval import BaseRetriever, HybridRetriever, BM25Retriever, FAISSRetriever
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, FAISSRetriever
 from flexrag.components.post_retrieval import BasePostRetrieval, PostRetrieval
 
 
@@ -73,7 +73,7 @@ class RAGPipeline:
     def __init__(
             self,
             pre_retrieval_optimizer: PreQueryOptimizer,
-            retriever: BaseRetriever,
+            retriever: BaseFlexRetriever,
             post_retrieval_optimizer: PostRetrieval,
             context_evaluator: LLMContextEvaluator,
             generator: OpenAIGenerator,

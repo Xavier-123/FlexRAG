@@ -139,7 +139,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # 允许用户选择是否开启稀疏检索
     parser.add_argument("--enable-sparse", action="store_true",
                         help="Build a BM25 sparse index alongside the FAISS dense index.")
-
+    # 允许用户选择是否开启稀疏检索
+    parser.add_argument("--enable-graph", action="store_true",
+                        help="Build a BM25 sparse index alongside the FAISS dense index.")
+    parser.add_argument("--top-k-graph", type=int, default=2,
+                        help="检索最相关的节点/边数量 (仅在 --enable-graph 时生效)")
+    parser.add_argument("--llm-model", type=str, default="Qwen/Qwen3.5-35B-A3B")
+    parser.add_argument("--llm-base-url", type=str, default="https://api-inference.modelscope.cn/v1")
+    parser.add_argument("--llm-api-key", type=str, default="ms-c429b084-79ba-4a00-a749-aae8681e902d")
     return parser.parse_args(argv)
 
 
@@ -197,47 +204,52 @@ async def build(args: argparse.Namespace) -> None:
         print("[INFO] Building Sparse BM25 index ...")
         t2 = time.perf_counter()
 
-        # ⚠️ 注意: 这里需要获取分块后的文本。
-        # 你需要根据 flexrag 的具体 API 获取 document chunks。
-        # 假设 builder 有一个属性 `.chunks` 或方法 `.get_all_texts()`:
         try:
-            # 请根据实际情况修改下方代码获取 chunks 的纯文本列表
-            if hasattr(builder, 'nodes'):  # LlamaIndex 风格
-                texts = [node.text for node in builder.nodes]
-            elif hasattr(builder, 'chunks'):  # 常见封装风格
-                texts = [chunk.text for chunk in builder.chunks]
-            elif hasattr(builder, "_raw_docs"):  # 常见封装风格
-                texts = [document.text for document in builder._raw_docs]
-            else:
-                # 兜底方案：如果 API 不同，请在此处适配
-                raise NotImplementedError("Please implement the method to extract text chunks from builder.")
-
             from llama_index.core.node_parser import SentenceSplitter
             from llama_index.retrievers.bm25 import BM25Retriever
             # 将文档切分为 Nodes (节点)
             # BM25Retriever 需要输入 Nodes
             splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=50)
             nodes = splitter.get_nodes_from_documents(builder._raw_docs)
-
             # 初始化 BM25Retriever
             retriever = BM25Retriever.from_defaults(
                 nodes=nodes,
                 similarity_top_k=2,  # 设置返回的 Top-K 数量
                 tokenizer=tokenize_text  # 传入自定义的中文分词器
             )
-
             # 持久化到本地目录
-
             sparse_index_path = os.path.join(output_dir, "bm25_index")
             os.makedirs(sparse_index_path, exist_ok=True)
             retriever.persist(sparse_index_path)
             print(f"BM25 索引已成功保存至 {Path(output_dir) / 'bm25_index'}\n")
-
             elapsed_sparse = time.perf_counter() - t2
             print(f"[INFO] Sparse BM25 Index built and saved to '{sparse_index_path}' in {elapsed_sparse:.1f}s.")
 
         except Exception as e:
             print(f"[ERROR] Failed to build sparse index: {e}")
+
+    # ---- build & save graph index ----
+    if args.enable_graph:
+        from flexrag.components.retrieval import GraphRetriever
+        graph_persist_dir = os.path.join(output_dir, "graph_index")
+        if not os.path.exists(graph_persist_dir):
+            os.makedirs(graph_persist_dir)
+
+        graph_retriever = GraphRetriever(
+            llm_model_name=args.llm_model,
+            llm_base_url=args.llm_base_url,
+            llm_api_key=args.llm_api_key,
+            embed_model_name=args.embedding_model,
+            embed_base_url=args.embedding_base_url,
+            embed_api_key=args.embedding_api_key,
+            top_k=args.top_k_graph,
+            persist_dir=graph_persist_dir,
+        )
+        print("正在抽取实体和关系，构建图谱 (这需要调用 LLM，请稍候)...")
+        t3 = time.perf_counter()
+        await graph_retriever.build_graph(builder._raw_docs[:1])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
+        elapsed_graph = time.perf_counter() - t3
+        print(f"[INFO] Graph Index built and saved in {elapsed_graph:.1f}s.")
 
     print(f"[INFO] Total time: {time.perf_counter() - t0:.1f}s.")
 
@@ -249,6 +261,9 @@ async def build(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Parse arguments, configure logging, and run the async build pipeline."""
+    import nest_asyncio
+    nest_asyncio.apply()
+
     args = _parse_args(argv)
     asyncio.run(build(args))
 

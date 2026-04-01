@@ -3,13 +3,13 @@ import jieba
 
 from llama_index.retrievers.bm25 import BM25Retriever as LlamaIndexBM25Retriever
 
-from flexrag.components.retrieval import BaseRetriever
+from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.core.schema import Document
 
 logger = logging.getLogger(__name__)
 
 
-class BM25Retriever(BaseRetriever):
+class BM25Retriever(BaseFlexRetriever):
 
     def __init__(
             self,
@@ -20,8 +20,6 @@ class BM25Retriever(BaseRetriever):
         self._bm25_retriever: LlamaIndexBM25Retriever | None = None
 
         # 优先尝试从持久化目录加载 .pkl 文件
-        self._knowledge_persist_dir = persist_dir
-
         if persist_dir:
             self._bm25_retriever = LlamaIndexBM25Retriever.from_persist_dir(
                 persist_dir,
@@ -51,9 +49,6 @@ class BM25Retriever(BaseRetriever):
                 )
             )
         logger.debug("Retrieved %d documents", len(documents))
-
-        # for idx, node in enumerate(nodes):
-        #     print(f"[{idx + 1}] 得分: {node.score:.4f} | 文本: {node.text[:40]}...")
 
         return documents
 

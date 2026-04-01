@@ -20,7 +20,7 @@ from langgraph.graph import END, START, StateGraph
 
 from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
 from flexrag.components.pre_retrieval import PreQueryOptimizer
-from flexrag.components.retrieval import BaseRetriever
+from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.workflows.graph.nodes import (
     make_context_evaluator_node,
@@ -77,7 +77,7 @@ class _GraphState(TypedDict, total=False):
 
 def build_rag_graph(
         pre_retrieval_optimizer: PreQueryOptimizer,
-        retriever: BaseRetriever,
+        retriever: BaseFlexRetriever,
         post_retrieval_optimizer: PostRetrieval,
         context_evaluator: BaseContextEvaluator,
         generator: BaseGenerator,

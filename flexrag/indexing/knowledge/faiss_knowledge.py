@@ -46,7 +46,7 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[import]
 
 from flexrag.core.abstractions import BaseKnowledgeBuilder
-from flexrag.components.retrieval.retriever import VLLMEmbedding
+from flexrag.components.retrieval import OpenAILikeEmbedding
 from flexrag.indexing.knowledge.custom_reader import _CustomReader
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class FaissKnowledgeBuilder(BaseKnowledgeBuilder):
         embed_api_key: str | None = None,
         http_client: Any | None = None,
     ) -> None:
-        self._embed_model = VLLMEmbedding(
+        self._embed_model = OpenAILikeEmbedding(
             base_url=embed_base_url,
             model=embed_model_name,
             api_key=embed_api_key,
