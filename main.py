@@ -46,7 +46,6 @@ from langchain_openai import ChatOpenAI
 
 from flexrag import RAGPipeline
 from flexrag.common import Settings, setup_logging
-from flexrag.indexing.knowledge import FaissKnowledgeBuilder
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
 from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever
@@ -98,7 +97,7 @@ _DEMO_CORPUS = [
 
 async def build_knowledge_base(directory: str, settings: Settings) -> None:
     """Load files from *directory*, build the FAISS index, and save it."""
-    builder = FaissKnowledgeBuilder(
+    builder = FAISSRetriever(
         embed_base_url=settings.embedding_base_url,
         embed_model_name=settings.embedding_model,
         embed_api_key=settings.embedding_api_key,
@@ -243,7 +242,7 @@ async def main() -> None:
     # ------------------------------------------------------------------ #
     # 1. Check whether a persisted knowledge base already exists         #
     # ------------------------------------------------------------------ #
-    if FaissKnowledgeBuilder.index_exists(persist_dir):
+    if FAISSRetriever.index_exists(persist_dir):
         print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
         pipeline = _build_pipeline(settings, is_demo=False)
 

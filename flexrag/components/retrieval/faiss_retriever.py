@@ -114,7 +114,7 @@ class FAISSRetriever(BaseFlexRetriever):
         if not os.path.isfile(faiss_path):
             raise FileNotFoundError(
                 f"No FAISS index found at '{faiss_path}'. "
-                "Build the knowledge base first with FaissKnowledgeBuilder."
+                "Build the knowledge base first with FAISSRetriever."
             )
 
         faiss_idx = faiss.read_index(faiss_path)

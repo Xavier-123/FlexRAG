@@ -47,7 +47,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from flexrag.indexing.knowledge import FaissKnowledgeBuilder
+from flexrag.components.retrieval import FAISSRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ async def build(args: argparse.Namespace) -> None:
     chunk_overlap = args.chunk_overlap
 
     # ---- safety check ----
-    if FaissKnowledgeBuilder.index_exists(output_dir) and not args.force:
+    if FAISSRetriever.index_exists(output_dir) and not args.force:
         print(
             f"[ERROR] An index already exists at '{output_dir}'.\n"
             "       Use --force to overwrite it.",
@@ -171,7 +171,7 @@ async def build(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # ---- builder ----
-    builder = FaissKnowledgeBuilder(
+    builder = FAISSRetriever(
         embed_base_url=args.embedding_base_url,
         embed_model_name=args.embedding_model,
         embed_api_key=args.embedding_api_key,

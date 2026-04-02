@@ -5,12 +5,10 @@ import os
 from flexrag import RAGPipeline
 from flexrag.common.config import Settings
 from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimizer
-from flexrag.components.judges.context_evaluator import LLMContextEvaluator
-from flexrag.components.generation.generator import OpenAIGenerator
-from flexrag.components.pre_retrieval.query_optimizer import LLMQueryOptimizer
-from flexrag.indexing.knowledge import FaissKnowledgeBuilder
-from flexrag.components.post_retrieval.reranker import VLLMReranker
-from flexrag.components.retrieval import LlamaIndexRetriever
+from flexrag.components.pre_retrieval import PreQueryOptimizer
+from flexrag.components.post_retrieval import OpenAILikeReranker
+from flexrag.components.retrieval import HybridRetriever, FAISSRetriever
+from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 from langchain_openai import ChatOpenAI
 
 # ================== 全局配置与缓存 ==================
