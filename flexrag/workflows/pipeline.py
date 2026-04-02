@@ -1,26 +1,3 @@
-"""
-High-level RAG pipeline entry point.
-
-:class:`RAGPipeline` wires together all components, builds the LangGraph
-graph, and exposes a single :meth:`~RAGPipeline.run` method for end-users.
-
-Typical usage::
-
-    from flexrag import RAGPipeline
-    from flexrag.common.config import Settings
-
-    cfg = Settings()
-    pipeline = RAGPipeline.from_settings(cfg)
-    pipeline.add_documents(["RAG is ...", "LangGraph is ..."])
-    output = pipeline.run("What is RAG?")
-    print(output.answer)
-    print(output.evidence)
-    # Retrieve the full execution trace using output.thread_id:
-    #   from flexrag.observability.tracing import CheckpointReader
-    #   reader = CheckpointReader(cfg.checkpoint_db_path)
-    #   reader.print_run(output.thread_id)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -33,8 +10,8 @@ from langchain_openai import ChatOpenAI
 
 from flexrag.common import RAGOutput, Settings
 from flexrag.workflows.builder import build_rag_graph
-from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter
-from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever
+from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, FAISSRetriever, GraphRetriever
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
@@ -43,17 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
-    """End-to-end modular RAG pipeline.
-
-    Orchestrates the full retrieval-augmented generation workflow:
-
-    1. **Retrieve** – find relevant document chunks via LlamaIndex.
-    2. **Rerank** – score candidates with a vLLM cross-encoder.
-    3. **Optimize Context** – extract key passages using a vLLM-hosted LLM.
-    4. **Generate** – produce a structured answer via a vLLM-hosted LLM.
-
-    All components are decoupled through abstract base classes (strategy
-    pattern) so they can be swapped individually.
+    """End-to-end modular RAG pipeline. Orchestrates the full retrieval-augmented generation workflow:
 
     Args:
         retriever: :class:`~flexrag.components.retrieval.LlamaIndexRetriever` instance.
@@ -152,7 +119,21 @@ class RAGPipeline:
         if settings is None:
             settings = Settings()
 
-        # -- Retriever (LlamaIndex + vLLM embeddings) --
+        llm = ChatOpenAI(
+            model=settings.llm_model,
+            api_key=settings.llm_api_key,  # type: ignore[arg-type]
+            base_url=settings.llm_base_url,
+            temperature=0.0,
+        )
+
+        pre_retrieval_optimizer = PreQueryOptimizer([
+            # QueryRewriter(llm=llm),
+            # QueryExpander(llm=llm),
+            # TaskSplitter(llm=llm),
+        ])
+
+        persist_dir = settings.knowledge_persist_dir
+        bm25_dir = os.path.join(settings.knowledge_persist_dir, "bm25_index")
         retriever = HybridRetriever(
             retrievers=[
                 # FAISSRetriever(
@@ -160,40 +141,27 @@ class RAGPipeline:
                 #     embed_base_url=settings.embedding_base_url,
                 #     embed_model_name=settings.embedding_model,
                 #     embed_api_key=settings.embedding_api_key,
-                #     top_k=settings.top_k_retrieval,
-                #     knowledge_persist_dir=settings.knowledge_persist_dir,
+                #     top_k=5,
+                #     persist_dir=persist_dir,
                 # ),
                 BM25Retriever(
-                    top_k=settings.top_k_retrieval,
-                    persist_dir=os.path.join(settings.knowledge_persist_dir, "bm25_index"),
+                    top_k=5,
+                    persist_dir=bm25_dir,
                 )
-            ],
+            ]
         )
 
-        # -- Reranker (vLLM cross-encoder) --
-        reranker = OpenAILikeReranker(
-            base_url=settings.reranker_base_url,
-            model=settings.reranker_model,
-            api_key=settings.reranker_api_key,
-        )
-
-        # -- Context Optimiser (LLM via vLLM) --
-        llm = ChatOpenAI(
-            model=settings.llm_model,
-            api_key=settings.llm_api_key,  # type: ignore[arg-type]
-            base_url=settings.llm_base_url,
-            temperature=0.0,
-        )
-        context_optimizer = LLMContextOptimizer(llm=llm)
-        query_optimizer = PreQueryOptimizer([
-            QueryRewriter(llm=llm),
-            # QueryExpander(llm=llm),
-            # TaskSplitter(llm=llm),
-            # TerminologyEnricher(llm=llm),
+        post_retrieval_optimizer = PostRetrieval([
+            OpenAILikeReranker(
+                base_url=settings.reranker_base_url,
+                model=settings.reranker_model,
+                api_key=settings.reranker_api_key,
+                top_k=5
+            ),
+            LLMContextOptimizer(llm=llm)
         ])
-        context_evaluator = LLMContextEvaluator(llm=llm)
 
-        # -- Generator (vLLM Structured Output) --
+        context_evaluator = LLMContextEvaluator(llm=llm)
         generator = OpenAIGenerator(
             model=settings.llm_model,
             api_key=settings.llm_api_key,
@@ -202,9 +170,8 @@ class RAGPipeline:
 
         return cls(
             retriever=retriever,
-            reranker=reranker,
-            context_optimizer=context_optimizer,
-            query_optimizer=query_optimizer,
+            pre_retrieval_optimizer=pre_retrieval_optimizer,
+            post_retrieval_optimizer=post_retrieval_optimizer,
             context_evaluator=context_evaluator,
             generator=generator,
             settings=settings,

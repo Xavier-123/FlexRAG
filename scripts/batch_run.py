@@ -39,18 +39,18 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
 
     retriever = HybridRetriever(
         retrievers=[
-            # FAISSRetriever(
-            #     index=None,
-            #     embed_base_url=args.embedding_base_url,
-            #     embed_model_name=args.embedding_model,
-            #     embed_api_key=args.embedding_api_key,
-            #     top_k=args.top_k_retrieval,
-            #     persist_dir=args.knowledge_persist_dir,
-            # ),
-            # BM25Retriever(
-            #     top_k=args.top_k_retrieval,
-            #     persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
-            # ),
+            FAISSRetriever(
+                index=None,
+                embed_base_url=args.embedding_base_url,
+                embed_model_name=args.embedding_model,
+                embed_api_key=args.embedding_api_key,
+                top_k=args.top_k_retrieval,
+                persist_dir=args.knowledge_persist_dir,
+            ),
+            BM25Retriever(
+                top_k=args.top_k_retrieval,
+                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            ),
             GraphRetriever(
                 llm_model_name=args.llm_model,
                 llm_base_url=args.llm_base_url,
@@ -58,7 +58,7 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
                 embed_model_name=args.embedding_model,
                 embed_base_url=args.embedding_base_url,
                 embed_api_key=args.embedding_api_key,
-                # top_k=args.top_k_retrieval,
+                # top_k=args.top_k_graph,
                 persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
             )
         ],
@@ -166,9 +166,6 @@ def parse_arguments() -> argparse.Namespace:
 
     # --- 知识库存储相关参数 ---
     parser.add_argument("--knowledge-persist-dir", type=str, required=True, help="知识库持久化目录路径")
-
-    # --- Query 优化相关参数 ---
-    parser.add_argument("--pre-retrieval-strategies", type=lambda x: x.split(','), required=True, help="query优化类型")
 
     # --- 向量检索相关参数 ---
     parser.add_argument("--top-k-retrieval", type=int, default=5, help="初次检索阶段 (Retrieval) 召回的 Top-K 文档数量")

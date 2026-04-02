@@ -149,7 +149,7 @@ class FAISSRetriever(BaseFlexRetriever):
         if self._faiss_retriever is None or self._faiss_retriever.similarity_top_k != self._top_k:
             self._faiss_retriever = self._index.as_retriever(similarity_top_k=self._top_k)
 
-        logger.debug("Retrieving top-%d docs for query: %r", self._top_k, query)
+        logger.info("Faiss Retrieving top-%d docs for query: %r", self._top_k, query)
         nodes: list[NodeWithScore] = await asyncio.to_thread(self._faiss_retriever.retrieve, query)
 
         documents: list[Document] = []

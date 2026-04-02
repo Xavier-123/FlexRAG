@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import jieba
 
@@ -36,7 +37,8 @@ class BM25Retriever(BaseFlexRetriever):
         Returns:
             List of :class:`~flexrag.common.schema.Document` sorted by descending score.
         """
-        nodes = self._bm25_retriever.retrieve(query)
+        logger.info("BM25 Retrieving top-%d docs for query: %r", self._similarity_top_k, query)
+        nodes = await asyncio.to_thread(self._bm25_retriever.retrieve, query)
 
         documents: list[Document] = []
         for node in nodes:
@@ -47,7 +49,7 @@ class BM25Retriever(BaseFlexRetriever):
                     metadata=node.metadata,
                 )
             )
-        logger.debug("Retrieved %d documents", len(documents))
+        logger.info("BM25 Retrieved %d documents", len(documents))
 
         return documents
 

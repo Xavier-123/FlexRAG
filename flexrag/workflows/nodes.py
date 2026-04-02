@@ -150,17 +150,18 @@ def make_post_retrieval_optimizer_node(
 
             if isinstance(optimized_result, tuple) and len(optimized_result) == 2:
                 # LLMContextOptimizer case
-                optimized_query, prompt_string = optimized_result
+                optimized_context, prompt_string = optimized_result
                 return {
-                    "current_query": optimized_query,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_query": optimized_query}],
+                    "optimized_context": optimized_context,
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_context": optimized_context}],
                 }
             elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
                 # OpenAILikeReranker case
                 reranked_docs = [d.model_dump() for d in optimized_result]
+                optimized_context = '\n\n'.join(reranked_docs)
                 return {
-                    "reranked_docs": reranked_docs,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "reranked_docs": reranked_docs}],
+                    "optimized_context": optimized_context,
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "optimized_query": optimized_context}],
                 }
 
         except Exception as exc:  # noqa: BLE001
@@ -228,7 +229,7 @@ def make_generate_node(generator: BaseGenerator) -> Any:
             return {}
         query: str = state.get("original_query") or state["query"]
         context: str = state.get("optimized_context", "")
-        raw_docs: list[dict] = state.get("reranked_docs", [])
+        raw_docs: list[dict] = state.get("retrieved_docs", [])
         source_texts = [d["text"] for d in raw_docs]
         accumulated_context: list[str] = state.get("accumulated_context", [])
         logger.info("[generate] query=%r  context_len=%d", query, len(context))

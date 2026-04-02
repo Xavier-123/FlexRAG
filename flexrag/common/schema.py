@@ -76,9 +76,6 @@ class RAGState(BaseModel):
     retrieved_docs: list[Document] = Field(
         default_factory=list, description="Documents from the retrieval agent"
     )
-    reranked_docs: list[Document] = Field(
-        default_factory=list, description="Documents after reranking"
-    )
     optimized_context: str = Field(
         "", description="Pruned / summarised context for the generator"
     )

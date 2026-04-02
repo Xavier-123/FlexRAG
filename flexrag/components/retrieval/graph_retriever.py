@@ -97,7 +97,8 @@ class GraphRetriever(BaseFlexRetriever):
             return []
 
         # 获取检索到的节点 (返回 List[NodeWithScore])
-        nodes_with_score = self._graph_retriever.retrieve(query)
+        logger.info("Graph Retrieving top-%d docs for query: %r", self._similarity_top_k, query)
+        nodes_with_score = await self._graph_retriever.aretrieve(query)
 
         documents: List[Document] = []
         for node_with_score in nodes_with_score:
@@ -110,7 +111,7 @@ class GraphRetriever(BaseFlexRetriever):
                 )
             )
 
-        logger.debug("Graph retrieved %d documents", len(documents))
+        logger.info("Graph retrieved %d documents", len(documents))
         return documents
 
     def load_index(self, persist_dir: str) -> None:

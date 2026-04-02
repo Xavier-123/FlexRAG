@@ -61,7 +61,6 @@ class _GraphState(TypedDict, total=False):
     missing_info_history: list[str]
     judge_reason: str
     retrieved_docs: list[dict[str, Any]]
-    reranked_docs: list[dict[str, Any]]
     optimized_context: str  # 当前这一轮提取的上下文
     accumulated_context: Annotated[list[str], operator.add]  # 记录所有迭代轮次中积累的“已有 Context”
     answer: str
@@ -198,11 +197,3 @@ def _route_after_context_evaluator(
     if iteration_count < max_iterations:
         return "pre_retrieval_optimizer"
     return "generate"
-
-# def check_quality(state: _GraphState) -> str:
-#     """判断反思节点的结果，决定是否重做"""
-#     # 如果反思节点追加了带有反馈意见的消息，说明需要重做
-#     last_message = state["messages"][-1]
-#     if isinstance(last_message, HumanMessage) and "调整搜索策略" in last_message.content:
-#         return "rewrite_and_retry"
-#     return END
