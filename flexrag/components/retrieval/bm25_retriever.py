@@ -4,7 +4,7 @@ import jieba
 from llama_index.retrievers.bm25 import BM25Retriever as LlamaIndexBM25Retriever
 
 from flexrag.components.retrieval import BaseFlexRetriever
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class BM25Retriever(BaseFlexRetriever):
             query: The user's search string.
 
         Returns:
-            List of :class:`~flexrag.core.schema.Document` sorted by descending score.
+            List of :class:`~flexrag.common.schema.Document` sorted by descending score.
         """
         nodes = self._bm25_retriever.retrieve(query)
 

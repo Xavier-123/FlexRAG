@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 
 
 class BasePostRetrieval(ABC):

@@ -10,7 +10,7 @@ from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import NodeWithScore
 
 from flexrag.components.retrieval import BaseFlexRetriever, OpenAILikeEmbedding
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 
 logger = logging.getLogger(__name__)
 
@@ -79,15 +79,15 @@ class FAISSRetriever(BaseFlexRetriever):
         """Retrieve documents relevant to *query*.
 
         Internally creates (or re-uses) a LlamaIndex
-        :class:`~llama_index.core.VectorIndexRetriever` and converts its
-        :class:`~llama_index.core.schema.NodeWithScore` results into
-        framework-agnostic :class:`~flexrag.core.schema.Document` objects.
+        :class:`~llama_index.common.VectorIndexRetriever` and converts its
+        :class:`~llama_index.common.schema.NodeWithScore` results into
+        framework-agnostic :class:`~flexrag.common.schema.Document` objects.
 
         Args:
             query: The user's search string.
 
         Returns:
-            List of :class:`~flexrag.core.schema.Document` sorted by descending score.
+            List of :class:`~flexrag.common.schema.Document` sorted by descending score.
         """
         if self._faiss_retriever is None or self._faiss_retriever.similarity_top_k != self._top_k:
             self._faiss_retriever = self._index.as_retriever(similarity_top_k=self._top_k)

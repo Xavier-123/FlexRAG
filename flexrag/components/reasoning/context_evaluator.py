@@ -10,8 +10,8 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flexrag.core.abstractions import BaseContextEvaluator
-from flexrag.core.schema import ContextEvaluation
+from flexrag.components.reasoning.base import BaseContextEvaluator
+from flexrag.common.schema import ContextEvaluation
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ import httpx
 
 from llama_index.core.embeddings import BaseEmbedding
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 
 
 class OpenAILikeEmbedding(BaseEmbedding):
@@ -130,7 +130,7 @@ class BaseFlexRetriever(ABC):
             query: The user's question or search string.
 
         Returns:
-            A list of :class:`~flexrag.core.schema.Document` objects sorted by
+            A list of :class:`~flexrag.common.schema.Document` objects sorted by
             descending relevance score.
         """
 

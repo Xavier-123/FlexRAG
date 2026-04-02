@@ -8,14 +8,13 @@ import logging
 from typing import List, Dict
 from langchain_openai import ChatOpenAI
 
-from flexrag.core.config import Settings
-from flexrag.observability import setup_logging
-from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, OpenAILikeReranker
+from flexrag.common import setup_logging, Settings
 from flexrag.workflows import RAGPipeline
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
 from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 from flexrag.components.retrieval import FAISSRetriever, BM25Retriever, HybridRetriever, GraphRetriever
+from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 
 def is_debug():

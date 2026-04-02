@@ -17,7 +17,7 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 from flexrag.components.post_retrieval.base import BasePostRetrieval
 
 logger = logging.getLogger(__name__)

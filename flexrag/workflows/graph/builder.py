@@ -18,10 +18,10 @@ from typing import Any, Literal, Optional, Annotated
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 
-from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
 from flexrag.components.pre_retrieval import PreQueryOptimizer
 from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
+from flexrag.components.reasoning import BaseGenerator, BaseContextEvaluator
 from flexrag.workflows.graph.nodes import (
     make_context_evaluator_node,
     make_generate_node,
@@ -45,7 +45,7 @@ from typing import TypedDict
 class _GraphState(TypedDict, total=False):
     """Internal LangGraph state schema.
 
-    Mirrors :class:`~flexrag.core.schema.RAGState` but uses Python primitives
+    Mirrors :class:`~flexrag.common.schema.RAGState` but uses Python primitives
     (lists of dicts) instead of Pydantic models so that LangGraph can
     serialise / deserialise the state without extra configuration.
     """

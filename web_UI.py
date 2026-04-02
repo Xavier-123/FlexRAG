@@ -3,7 +3,7 @@ import asyncio
 import os
 
 from flexrag import RAGPipeline
-from flexrag.core.config import Settings
+from flexrag.common.config import Settings
 from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimizer
 from flexrag.components.judges.context_evaluator import LLMContextEvaluator
 from flexrag.components.generation.generator import OpenAIGenerator

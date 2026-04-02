@@ -1,19 +1,12 @@
-"""
-Abstract base classes (Strategy Pattern) for every pluggable component in FlexRAG.
-
-All base classes are defined in this single module for easy discovery.
-"""
-
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from flexrag.core.schema import ContextEvaluation, GenOutput
+from flexrag.common.schema import ContextEvaluation, GenOutput
 
 
-# ---------------------------------------------------------------------------
-# Judges (online context evaluation)
-# ---------------------------------------------------------------------------
 class BaseContextEvaluator(ABC):
     """Strategy interface for deciding if context can answer the query."""
+    def __init__(self, llm, *args, **kwargs):
+        self._llm = llm
 
     @abstractmethod
     async def evaluate(
@@ -26,14 +19,9 @@ class BaseContextEvaluator(ABC):
 
 
 class BaseGenerator(ABC):
-    """Strategy interface for answer generation.
-
-    Concrete implementations call an LLM (e.g. GPT-4o via OpenAI's Structured
-    Output API) and return a validated :class:`~flexrag.core.schema.RAGOutput`.
-
-    Example subclasses:
-        - :class:`flexrag.components.generation.OpenAIGenerator`
-    """
+    """Strategy interface for answer generation."""
+    def __init__(self, llm, *args, **kwargs):
+        self._llm = llm
 
     @abstractmethod
     async def generate(
@@ -54,14 +42,25 @@ class BaseGenerator(ABC):
                 *context*; these are surfaced as evidence in the output.
 
         Returns:
-            A :class:`~flexrag.core.schema.RAGOutput` with ``answer`` and
+            A :class:`~flexrag.common.schema.RAGOutput` with ``answer`` and
             ``evidence`` fields populated.
         """
 
 
-# ---------------------------------------------------------------------------
-# Knowledge building (indexing)
-# ---------------------------------------------------------------------------
+class BaseReflector(ABC):
+
+    def __init__(self, llm, *args, **kwargs):
+        self._llm = llm
+
+    @abstractmethod
+    async def reflect(
+            self,
+            query: str,
+            context: str,
+            answer: str,
+    ):
+        pass
+
 
 class BaseKnowledgeBuilder(ABC):
     """Strategy interface for building and persisting a knowledge base.
@@ -119,10 +118,3 @@ class BaseKnowledgeBuilder(ABC):
         Args:
             persist_dir: Directory to inspect.
         """
-
-
-__all__ = [
-    "BaseContextEvaluator",
-    "BaseGenerator",
-    "BaseKnowledgeBuilder",
-]

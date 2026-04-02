@@ -60,7 +60,7 @@ logging.basicConfig(
 from langchain_openai import ChatOpenAI
 
 from flexrag import RAGPipeline
-from flexrag.core.config import Settings
+from flexrag.common.config import Settings
 from flexrag.components import LLMContextOptimizer, OpenAIGenerator, LLMContextEvaluator, VLLMReranker, \
     LlamaIndexRetriever
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder

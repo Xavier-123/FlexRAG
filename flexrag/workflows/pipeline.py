@@ -7,7 +7,7 @@ graph, and exposes a single :meth:`~RAGPipeline.run` method for end-users.
 Typical usage::
 
     from flexrag import RAGPipeline
-    from flexrag.core.config import Settings
+    from flexrag.common.config import Settings
 
     cfg = Settings()
     pipeline = RAGPipeline.from_settings(cfg)
@@ -31,14 +31,12 @@ from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
 
-from flexrag.core.config import Settings
-from flexrag.components import LLMContextOptimizer, LLMContextEvaluator, OpenAIGenerator, \
-     OpenAILikeReranker
-from flexrag.core.schema import RAGOutput
+from flexrag.common import RAGOutput, Settings
 from flexrag.workflows.graph.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter
 from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, FAISSRetriever
-from flexrag.components.post_retrieval import BasePostRetrieval, PostRetrieval
+from flexrag.components.post_retrieval import BasePostRetrieval, PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
+from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 
 logger = logging.getLogger(__name__)
@@ -59,7 +57,7 @@ class RAGPipeline:
 
     Args:
         retriever: :class:`~flexrag.components.retrieval.LlamaIndexRetriever` instance.
-        settings: :class:`~flexrag.core.config.Settings` driving numeric hyper-params.
+        settings: :class:`~flexrag.common.config.Settings` driving numeric hyper-params.
         checkpoint_db_path: Optional path to a SQLite database file used to
             persist LangGraph state checkpoints after every node.  When set,
             every :meth:`arun` call saves a full per-node trace that can be
@@ -138,14 +136,14 @@ class RAGPipeline:
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> "RAGPipeline":
-        """Construct a :class:`RAGPipeline` from :class:`~flexrag.core.config.Settings`.
+        """Construct a :class:`RAGPipeline` from :class:`~flexrag.common.config.Settings`.
 
         All components are built using the values in *settings* (which default
         to environment variables / ``.env`` file).
 
         Args:
             settings: Optional pre-built settings object.  When ``None`` a
-                new :class:`~flexrag.core.config.Settings` instance is created,
+                new :class:`~flexrag.common.config.Settings` instance is created,
                 reading from the environment.
 
         Returns:
@@ -246,7 +244,7 @@ class RAGPipeline:
                 ``None`` a fresh UUID is generated for each call.
 
         Returns:
-            A :class:`~flexrag.core.schema.RAGOutput` containing ``answer``,
+            A :class:`~flexrag.common.schema.RAGOutput` containing ``answer``,
             ``evidence``, and ``thread_id``.
 
         Raises:
@@ -267,7 +265,7 @@ class RAGPipeline:
                 invocation is stored independently.
 
         Returns:
-            A :class:`~flexrag.core.schema.RAGOutput` containing ``answer``,
+            A :class:`~flexrag.common.schema.RAGOutput` containing ``answer``,
             ``evidence``, and ``thread_id`` (the ID used for this run,
             regardless of whether checkpointing is active).
 

@@ -1,6 +1,6 @@
 from typing import Any
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 from flexrag.components.post_retrieval.reranker import OpenAILikeReranker
 from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimizer
 

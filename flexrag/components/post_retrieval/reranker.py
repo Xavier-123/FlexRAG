@@ -4,7 +4,7 @@ import logging
 import httpx
 from typing import Any
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 from flexrag.components.post_retrieval.base import BasePostRetrieval
 
 logger = logging.getLogger(__name__)

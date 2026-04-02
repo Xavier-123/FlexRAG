@@ -4,7 +4,7 @@ LangGraph node functions for the FlexRAG pipeline.
 Each function in this module corresponds to one node in the StateGraph.
 Nodes follow a simple contract:
 
-- Accept a :class:`~flexrag.core.schema.RAGState` dict (LangGraph passes the state
+- Accept a :class:`~flexrag.common.schema.RAGState` dict (LangGraph passes the state
   as a plain ``dict`` that matches the TypedDict / Pydantic schema).
 - Return a **partial** ``dict`` with only the keys they update.  LangGraph
   merges the returned dict into the running state automatically.
@@ -21,12 +21,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from flexrag.core.abstractions import BaseContextEvaluator, BaseGenerator
 from flexrag.components.pre_retrieval import PreQueryOptimizer
 from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
-from flexrag.core.schema import Document
-from flexrag.core.config import settings
+from flexrag.components.reasoning import BaseContextEvaluator, BaseGenerator
+from flexrag.common.schema import Document
+from flexrag.common.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +207,7 @@ def make_generate_node(generator: BaseGenerator) -> Any:
     """Create the answer-generation node function.
 
     Args:
-        generator: A concrete :class:`~flexrag.core.abstractions.BaseGenerator`.
+        generator: A concrete :class:`~flexrag.common.abstractions.BaseGenerator`.
 
     Returns:
         A callable compatible with :meth:`StateGraph.add_node`.

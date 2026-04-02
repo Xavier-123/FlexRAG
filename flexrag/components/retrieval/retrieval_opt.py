@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 from flexrag.components.retrieval import BaseFlexRetriever, FAISSRetriever
 
 logger = logging.getLogger(__name__)

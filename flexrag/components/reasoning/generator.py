@@ -4,7 +4,7 @@ vLLM-compatible structured output generator.
 Uses the ``with_structured_output`` feature of LangChain's ``ChatOpenAI``
 against an OpenAI-compatible endpoint (e.g. a vLLM server) to return a JSON
 object that is automatically validated against
-:class:`~flexrag.core.schema.RAGOutput`.
+:class:`~flexrag.common.schema.RAGOutput`.
 
 Reference:
     https://python.langchain.com/docs/how_to/structured_output/
@@ -15,8 +15,8 @@ from __future__ import annotations
 import logging
 from langchain_openai import ChatOpenAI
 
-from flexrag.core.abstractions import BaseGenerator
-from flexrag.core.schema import GenOutput
+from flexrag.components.reasoning.base import BaseGenerator
+from flexrag.common.schema import GenOutput
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class OpenAIGenerator(BaseGenerator):
 
     Uses LangChain's ``with_structured_output`` against any OpenAI-compatible
     endpoint (vLLM, OpenAI, etc.) to bind
-    :class:`~flexrag.core.schema.RAGOutput` as the expected response schema so that
+    :class:`~flexrag.common.schema.RAGOutput` as the expected response schema so that
     the raw JSON returned by the model is automatically parsed and validated.
 
     Args:
@@ -95,7 +95,7 @@ class OpenAIGenerator(BaseGenerator):
             accumulated_context: list[str],
             source_documents: list[str],
     ) -> GenOutput:
-        """Call GPT-4o and return a structured :class:`~flexrag.core.schema.RAGOutput`.
+        """Call GPT-4o and return a structured :class:`~flexrag.common.schema.RAGOutput`.
 
         Args:
             query: The user's question.
@@ -105,7 +105,7 @@ class OpenAIGenerator(BaseGenerator):
                 ``evidence`` when the model cannot cite specific passages).
 
         Returns:
-            A :class:`~flexrag.core.schema.RAGOutput` with ``answer`` and
+            A :class:`~flexrag.common.schema.RAGOutput` with ``answer`` and
             ``evidence`` populated.
 
         Raises:

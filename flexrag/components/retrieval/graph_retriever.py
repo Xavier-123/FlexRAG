@@ -8,7 +8,7 @@ from llama_index.core.storage.storage_context import StorageContext
 from llama_index.core import load_index_from_storage, PropertyGraphIndex, Settings
 from llama_index.core.graph_stores import SimplePropertyGraphStore
 
-from flexrag.core.schema import Document
+from flexrag.common.schema import Document
 from flexrag.components.retrieval import BaseFlexRetriever, OpenAILikeEmbedding
 # from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 
