@@ -2,7 +2,7 @@
 FlexRAG – interactive question-answering entry point.
 
 This script demonstrates how to wire the full pipeline together with a
-persistent FAISS knowledge base and provides an interactive Q&A loop.
+persistent knowledge base and provides an interactive Q&A loop.
 
 Start-up logic
 --------------
@@ -18,23 +18,7 @@ Start-up logic
 
 Prerequisites
 -------------
-1. Set environment variables (or create a ``.env`` file)::
-
-       LLM_BASE_URL=http://localhost:8000/v1
-       LLM_API_KEY=sk-...
-       EMBEDDING_BASE_URL=http://localhost:8001/v1
-       EMBEDDING_API_KEY=sk-...
-       RERANKER_BASE_URL=http://localhost:8002/v1
-       RERANKER_API_KEY=sk-...
-       LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
-       EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
-       RERANKER_MODEL=BAAI/bge-reranker-v2-m3
-
-       # Optional – knowledge base settings (shown with defaults)
-       KNOWLEDGE_PERSIST_DIR=./knowledge_base
-       KNOWLEDGE_CHUNK_SIZE=512
-       KNOWLEDGE_CHUNK_OVERLAP=50
-
+1. Set environment variables (or create a ``.env`` file)
 2. Install dependencies::
 
        pip install -r requirements.txt
@@ -50,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import sys
 
 logging.basicConfig(
@@ -60,12 +45,13 @@ logging.basicConfig(
 from langchain_openai import ChatOpenAI
 
 from flexrag import RAGPipeline
-from flexrag.common.config import Settings
-from flexrag.components import LLMContextOptimizer, OpenAIGenerator, LLMContextEvaluator, VLLMReranker, \
-    LlamaIndexRetriever
+from flexrag.common import Settings, setup_logging
 from flexrag.indexing.knowledge import FaissKnowledgeBuilder
-from flexrag.components.pre_retrieval import CompositeQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
+from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
+from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever
+from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
+from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -111,14 +97,7 @@ _DEMO_CORPUS = [
 
 
 async def build_knowledge_base(directory: str, settings: Settings) -> None:
-    """Load files from *directory*, build the FAISS index, and save it.
-
-    Args:
-        directory: Path to a local directory containing ``.txt``, ``.md``,
-            or ``.pdf`` files.
-        settings: Application settings (provides persist directory and chunk
-            configuration).
-    """
+    """Load files from *directory*, build the FAISS index, and save it."""
     builder = FaissKnowledgeBuilder(
         embed_base_url=settings.embedding_base_url,
         embed_model_name=settings.embedding_model,
@@ -141,61 +120,66 @@ async def build_knowledge_base(directory: str, settings: Settings) -> None:
     print(f"  Knowledge base saved to '{settings.knowledge_persist_dir}'.")
 
 
-async def load_retriever(settings: Settings) -> LlamaIndexRetriever:
-    """Restore a previously built knowledge base from disk into a retriever.
-
-    Args:
-        settings: Application settings (provides persist directory and
-            embedding configuration).
-
-    Returns:
-        A ready-to-use :class:`LlamaIndexRetriever` instance.
-    """
-    retriever = LlamaIndexRetriever(
-        index=None,
-        embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.embedding_model,
-        embed_api_key=settings.embedding_api_key,
-    )
-    await retriever.load_index(settings.knowledge_persist_dir)
-    return retriever
-
-
 # ---------------------------------------------------------------------------
 # Pipeline assembly
 # ---------------------------------------------------------------------------
 
 
-def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPipeline:
+def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
     """Wire up all pipeline components around *retriever*."""
-    reranker = VLLMReranker(
-        base_url=settings.reranker_base_url,
-        model=settings.reranker_model,
-        api_key=settings.reranker_api_key,
-    )
     llm = ChatOpenAI(
         model=settings.llm_model,
         api_key=settings.llm_api_key,  # type: ignore[arg-type]
         base_url=settings.llm_base_url,
         temperature=0.0,
     )
-    context_optimizer = LLMContextOptimizer(llm=llm)
-    query_optimizer = CompositeQueryOptimizer([
+
+    pre_retrieval_optimizer = PreQueryOptimizer([
         QueryRewriter(llm=llm),
         QueryExpander(llm=llm),
         TaskSplitter(llm=llm),
     ])
+
+    persist_dir = None if is_demo else settings.knowledge_persist_dir
+    bm25_dir = None if is_demo else os.path.join(settings.knowledge_persist_dir, "bm25_index")
+    retriever = HybridRetriever(
+        retrievers=[
+            FAISSRetriever(
+                index=None,
+                embed_base_url=settings.embedding_base_url,
+                embed_model_name=settings.embedding_model,
+                embed_api_key=settings.embedding_api_key,
+                top_k=5,
+                persist_dir=persist_dir,
+            ),
+            BM25Retriever(
+                top_k=5,
+                persist_dir=bm25_dir,
+            )
+        ]
+    )
+
+    post_retrieval_optimizer = PostRetrieval([
+        OpenAILikeReranker(
+            base_url=settings.reranker_base_url,
+            model=settings.reranker_model,
+            api_key=settings.reranker_api_key,
+            top_k=5
+        ),
+        LLMContextOptimizer(llm=llm)
+    ])
+
     context_evaluator = LLMContextEvaluator(llm=llm)
     generator = OpenAIGenerator(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
     )
+
     return RAGPipeline(
+        pre_retrieval_optimizer=pre_retrieval_optimizer,
         retriever=retriever,
-        reranker=reranker,
-        context_optimizer=context_optimizer,
-        query_optimizer=query_optimizer,
+        post_retrieval_optimizer=post_retrieval_optimizer,
         context_evaluator=context_evaluator,
         generator=generator,
         settings=settings,
@@ -208,13 +192,7 @@ def _build_pipeline(retriever: LlamaIndexRetriever, settings: Settings) -> RAGPi
 
 
 async def interactive_qa(pipeline: RAGPipeline) -> None:
-    """Run an interactive question-answering loop.
-
-    Type ``quit``, ``exit``, or ``q`` (case-insensitive) to stop.
-
-    Args:
-        pipeline: Fully initialised :class:`RAGPipeline`.
-    """
+    """Run an interactive question-answering loop."""
     print("\n" + "=" * 60)
     print("FlexRAG -- Interactive Q&A  (type 'quit' to exit)")
     print("=" * 60)
@@ -255,15 +233,19 @@ async def interactive_qa(pipeline: RAGPipeline) -> None:
 async def main() -> None:
     """Start FlexRAG: check for a FAISS knowledge base and begin Q&A."""
     settings = Settings()
+
+    # 统一使用内置的 setup_logging
+    setup_logging(settings.log_level, settings.log_format)
+    logger = logging.getLogger(__name__)
+
     persist_dir = settings.knowledge_persist_dir
 
     # ------------------------------------------------------------------ #
-    # 1. Check whether a persisted knowledge base already exists          #
+    # 1. Check whether a persisted knowledge base already exists         #
     # ------------------------------------------------------------------ #
     if FaissKnowledgeBuilder.index_exists(persist_dir):
         print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
-        retriever = await load_retriever(settings)
-        pipeline = _build_pipeline(retriever, settings)
+        pipeline = _build_pipeline(settings, is_demo=False)
 
     else:
         # ---------------------------------------------------------------- #
@@ -286,8 +268,7 @@ async def main() -> None:
                 sys.exit(1)
             print()
             await build_knowledge_base(directory, settings)
-            retriever = await load_retriever(settings)
-            pipeline = _build_pipeline(retriever, settings)
+            pipeline = _build_pipeline(settings, is_demo=False)
 
         elif choice == "d":
             print("[INFO] Indexing demo corpus ...")

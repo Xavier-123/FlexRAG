@@ -32,10 +32,10 @@ from typing import Any, Optional
 from langchain_openai import ChatOpenAI
 
 from flexrag.common import RAGOutput, Settings
-from flexrag.workflows.graph.builder import build_rag_graph
+from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter
-from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, FAISSRetriever
-from flexrag.components.post_retrieval import BasePostRetrieval, PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever
+from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 

@@ -134,21 +134,43 @@ class BaseFlexRetriever(ABC):
             descending relevance score.
         """
 
-    def add_documents(self, texts: list[str], metadatas: list[dict] | None = None) -> None:
-        """Index a list of raw text strings.
 
-        Useful when you want to build the index programmatically rather than
-        passing a pre-built :class:`VectorStoreIndex`.
+    async def load_files(self, path: str | list[str]) -> int:
+        """Load documents from a directory path or an explicit list of file paths.
 
         Args:
-            texts: Raw text chunks to add to the index.
-            metadatas: Optional metadata dicts (one per chunk).
+            path: A directory path (``str``) **or** a list of individual file
+                paths.
+
+        Returns:
+            The number of source documents loaded.
         """
-        # metadatas = metadatas or [{}] * len(texts)
-        # nodes = [
-        #     NodeWithScore(node=TextNode(text=t, metadata=m), score=1.0)
-        #     for t, m in zip(texts, metadatas)
-        # ]
-        # self._index.insert_nodes([n.node for n in nodes])
-        # # Invalidate the cached retriever so it is rebuilt with the new nodes.
-        # self._llama_retriever = None
+
+
+    async def build_index(
+            self,
+            chunk_size: int = 512,
+            chunk_overlap: int = 50,
+    ) -> None:
+        """Chunk the loaded documents and build the vector index.
+
+        Args:
+            chunk_size: Maximum number of tokens per chunk.
+            chunk_overlap: Number of tokens shared between consecutive chunks.
+        """
+
+
+    async def save(self, persist_dir: str) -> None:
+        """Persist the current vector index to *persist_dir* on disk.
+
+        Args:
+            persist_dir: Absolute or relative path of the storage directory.
+        """
+
+    @classmethod
+    def index_exists(cls, persist_dir: str) -> bool:
+        """Return ``True`` if a valid persisted index exists at *persist_dir*.
+
+        Args:
+            persist_dir: Directory to inspect.
+        """

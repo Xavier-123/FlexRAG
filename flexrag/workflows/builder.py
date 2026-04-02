@@ -22,7 +22,7 @@ from flexrag.components.pre_retrieval import PreQueryOptimizer
 from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.components.reasoning import BaseGenerator, BaseContextEvaluator
-from flexrag.workflows.graph.nodes import (
+from flexrag.workflows.nodes import (
     make_context_evaluator_node,
     make_generate_node,
     make_post_retrieval_optimizer_node,

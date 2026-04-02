@@ -27,7 +27,6 @@ class BM25Retriever(BaseFlexRetriever):
             )
             self._bm25_retriever.similarity_top_k = self._similarity_top_k
 
-
     async def retrieve(self, query: str) -> list[Document]:
         """Retrieve documents relevant to *query* using BM25.
 
