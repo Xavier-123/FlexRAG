@@ -3,9 +3,9 @@ import asyncio
 import json
 from typing import Any, Dict, List
 
-from flexrag.evaluate.metrics.em import ExactMatch
-from flexrag.evaluate.metrics.f1 import CharF1Score
-from flexrag.evaluate.metrics.recall_k import NonLLMContextRecall
+from flexrag.components.evaluate.metrics.em import ExactMatch
+from flexrag.components.evaluate.metrics.f1 import CharF1Score
+from flexrag.components.evaluate.metrics.recall_k import NonLLMContextRecall
 
 InputItem = Dict[str, Any]
 

@@ -28,16 +28,15 @@ Usage
 """
 
 from __future__ import annotations
-
+import os
 import argparse
 import asyncio
 import logging
 import sys
 import time
-import os
 from pathlib import Path
 
-# [新增] 引入分词和BM25库 (需 pip install rank_bm25 jieba)
+# 引入分词和BM25库
 try:
     from rank_bm25 import BM25Okapi
     import jieba
@@ -231,11 +230,13 @@ async def build(args: argparse.Namespace) -> None:
     # ---- build & save graph index ----
     if args.enable_graph:
         from flexrag.components.retrieval import GraphRetriever
+        from flexrag.components.retrieval.neo4j_graph_retriever import Neo4jGraphRetriever
         graph_persist_dir = os.path.join(output_dir, "graph_index")
         if not os.path.exists(graph_persist_dir):
             os.makedirs(graph_persist_dir)
 
         graph_retriever = GraphRetriever(
+            # graph_retriever = Neo4jGraphRetriever(
             llm_model_name=args.llm_model,
             llm_base_url=args.llm_base_url,
             llm_api_key=args.llm_api_key,
@@ -247,7 +248,7 @@ async def build(args: argparse.Namespace) -> None:
         )
         print("正在抽取实体和关系，构建图谱 (这需要调用 LLM，请稍候)...")
         t3 = time.perf_counter()
-        await graph_retriever.build_graph(builder._raw_docs[:1])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
+        await graph_retriever.build_graph(builder._raw_docs[:5])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
         elapsed_graph = time.perf_counter() - t3
         print(f"[INFO] Graph Index built and saved in {elapsed_graph:.1f}s.")
 

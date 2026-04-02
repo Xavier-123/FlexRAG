@@ -5,9 +5,7 @@ All base classes are defined in this single module for easy discovery.
 """
 
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
-
 from flexrag.core.schema import ContextEvaluation, GenOutput
 
 

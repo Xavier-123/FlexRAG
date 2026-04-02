@@ -1,7 +1,7 @@
 import logging
 from typing import List, Tuple, Dict
 
-from flexrag.evaluate.metrics.base import BaseMetric
+from flexrag.components.evaluate.metrics.base import BaseMetric
 
 logger = logging.getLogger(__name__)
 

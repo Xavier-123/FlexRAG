@@ -74,46 +74,7 @@ class FAISSRetriever(BaseFlexRetriever):
             faiss_idx.ntotal,
         )
 
-    # async def _load_index(self, persist_dir: str) -> None:
-    #     """Restore a previously saved FAISS index from *persist_dir*.
-    #
-    #     After this call :meth:`retrieve` is immediately usable.
-    #
-    #     Args:
-    #         persist_dir: Path that was previously passed to
-    #             :meth:`~flexrag.indexing.knowledge.FaissKnowledgeBuilder.save`.
-    #
-    #     Raises:
-    #         FileNotFoundError: If the expected FAISS binary is missing.
-    #     """
-    #     import faiss  # type: ignore[import]
-    #     from llama_index.vector_stores.faiss import FaissVectorStore  # type: ignore[import]
-    #
-    #     faiss_path = os.path.join(persist_dir, _FAISS_FILE)
-    #     if not os.path.isfile(faiss_path):
-    #         raise FileNotFoundError(
-    #             f"No FAISS index found at '{faiss_path}'. "
-    #             "Build the knowledge base first with FaissKnowledgeBuilder."
-    #         )
-    #
-    #     faiss_idx = await asyncio.to_thread(faiss.read_index, faiss_path)
-    #     vector_store = FaissVectorStore(faiss_index=faiss_idx)
-    #     storage_context = StorageContext.from_defaults(
-    #         vector_store=vector_store,
-    #         persist_dir=persist_dir,
-    #     )
-    #     self._index = await asyncio.to_thread(load_index_from_storage, storage_context)
-    #     # Invalidate the cached retriever so it is rebuilt with the new index.
-    #     self._faiss_retriever = None
-    #     logger.info(
-    #         "Index loaded from '%s' (%d vector(s))",
-    #         persist_dir,
-    #         faiss_idx.ntotal,
-    #     )
 
-    # ------------------------------------------------------------------
-    # BaseRetriever interface
-    # ------------------------------------------------------------------
     async def retrieve(self, query: str) -> list[Document]:
         """Retrieve documents relevant to *query*.
 

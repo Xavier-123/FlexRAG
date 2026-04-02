@@ -203,6 +203,9 @@ def parse_arguments() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    import nest_asyncio
+    nest_asyncio.apply()
+
     # 日志设置
     settings = Settings()
     setup_logging(settings.log_level, settings.log_format)

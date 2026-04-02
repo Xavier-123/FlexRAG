@@ -2,8 +2,8 @@ import numpy as np
 from collections import Counter
 from typing import List, Dict, Tuple, Callable
 
-from flexrag.evaluate.utils.eval_utils import normalize_answer
-from flexrag.evaluate.metrics.base import BaseMetric
+from flexrag.components.evaluate.utils.eval_utils import normalize_answer
+from flexrag.components.evaluate.metrics.base import BaseMetric
 
 
 class CharF1Score(BaseMetric):

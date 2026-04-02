@@ -2,8 +2,8 @@ import logging
 import numpy as np
 from typing import List, Dict, Tuple, Callable
 
-from flexrag.evaluate.utils.eval_utils import normalize_answer
-from flexrag.evaluate.metrics.base import BaseMetric
+from flexrag.components.evaluate.utils.eval_utils import normalize_answer
+from flexrag.components.evaluate.metrics.base import BaseMetric
 
 logger = logging.getLogger(__name__)
 
