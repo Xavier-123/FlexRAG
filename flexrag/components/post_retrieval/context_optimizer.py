@@ -92,7 +92,7 @@ class LLMContextOptimizer(BasePostRetrieval):
                 ]
             )
             optimized: str = response.content  # type: ignore[union-attr]
-            logger.debug(f"LLM context optimization response:\n{optimized}")
+            logger.info(f"LLM context optimization response:\n{optimized}")
 
         except Exception as exc:  # noqa: BLE001
             logger.warning(
@@ -104,11 +104,12 @@ class LLMContextOptimizer(BasePostRetrieval):
         # Enforce token budget via simple character truncation
         max_chars = max_tokens * self._chars_per_token
         if len(optimized) > max_chars:
-            logger.debug(
+            logger.info(
                 "Truncating optimised context from %d to %d chars",
                 len(optimized),
                 max_chars,
             )
             optimized = optimized[:max_chars]
 
+        logger.info("Context Optimized: ", optimized)
         return optimized, prompt_string

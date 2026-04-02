@@ -44,7 +44,7 @@ logging.basicConfig(
 
 from langchain_openai import ChatOpenAI
 
-from flexrag import RAGPipeline
+from flexrag.workflows.pipeline import RAGPipeline
 from flexrag.common import Settings, setup_logging
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher

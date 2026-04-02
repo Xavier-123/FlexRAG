@@ -25,6 +25,12 @@ async def main() -> None:
         help="eval_results.json path (默认读取当前目录下 eval_results.json)",
     )
     parser.add_argument(
+        "--output",
+        type=str,
+        default="metrics_results.json",
+        help="保存评估结果的输出路径 (默认: metrics_results.json)",
+    )
+    parser.add_argument(
         "--k_list",
         type=str,
         default="1,5,10,20",
@@ -33,6 +39,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     input_path = args.input
+    output_path = args.output
     k_list = _parse_int_list(args.k_list)
 
     with open(input_path, "r", encoding="utf-8") as f:
@@ -93,6 +100,35 @@ async def main() -> None:
         print(f"  EM: {em_example[i]}")
         print(f"  F1: {f1_example[i]}")
         print(f"  Recall@k: {recall_example[i]}")
+
+    # ==========================
+    # 结果保存逻辑：整合数据并写入文件
+    # ==========================
+    output_data = {
+        "overall_scores": {
+            "EM": em_pooled,
+            "F1": f1_pooled,
+            "Recall@k": recall_pooled
+        },
+        "detailed_results": []
+    }
+
+    # 将每条原始数据与计算出的指标合并
+    for i, item in enumerate(results):
+        detail_item = item.copy()  # 复制原始数据，保留 prompt, question 等字段
+        detail_item["metrics"] = {
+            "EM": em_example[i],
+            "F1": f1_example[i],
+            "Recall@k": recall_example[i]
+        }
+        output_data["detailed_results"].append(detail_item)
+
+    # 保存到指定的 JSON 文件
+    with open(output_path, "w", encoding="utf-8") as f:
+        # ensure_ascii=False 保证中文正常显示，indent=4 使 JSON 格式化便于阅读
+        json.dump(output_data, f, ensure_ascii=False, indent=4)
+
+    print(f"\n✅ 评估结果已成功保存至: {output_path}")
 
 
 if __name__ == "__main__":

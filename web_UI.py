@@ -1,13 +1,13 @@
-import gradio as gr
 import asyncio
 import os
+import logging
+import gradio as gr
 
-from flexrag import RAGPipeline
-from flexrag.common.config import Settings
-from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimizer
+from flexrag.workflows.pipeline import RAGPipeline
+from flexrag.common import Settings, setup_logging
 from flexrag.components.pre_retrieval import PreQueryOptimizer
-from flexrag.components.post_retrieval import OpenAILikeReranker
-from flexrag.components.retrieval import HybridRetriever, FAISSRetriever
+from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever, GraphRetriever
+from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 from langchain_openai import ChatOpenAI
 
@@ -33,12 +33,6 @@ def init_base_components():
     """初始化大模型、Reranker等与具体知识库无关的通用组件"""
     global base_components
 
-    reranker = VLLMReranker(
-        base_url=settings.reranker_base_url,
-        model=settings.reranker_model,
-        api_key=settings.reranker_api_key,
-    )
-
     llm = ChatOpenAI(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
@@ -46,10 +40,21 @@ def init_base_components():
         temperature=0.0,
     )
 
-    context_optimizer = LLMContextOptimizer(llm=llm)
-    query_optimizer = LLMQueryOptimizer(llm=llm)
-    context_evaluator = LLMContextEvaluator(llm=llm)
+    # 1. 预检索优化器 (参考 batch_run.py，可以传入空列表或具体组件)
+    pre_retrieval_optimizer = PreQueryOptimizer([])
 
+    # 2. 后检索优化器 (包装 Reranker 和 ContextOptimizer)
+    reranker = OpenAILikeReranker(
+        base_url=settings.reranker_base_url,
+        model=settings.reranker_model,
+        api_key=settings.reranker_api_key,
+        top_k=5  # 默认取 5，可根据需要关联 settings
+    )
+    context_optimizer = LLMContextOptimizer(llm=llm)
+    post_retrieval_optimizer = PostRetrieval([reranker, context_optimizer])
+
+    # 3. 评估器与生成器
+    context_evaluator = LLMContextEvaluator(llm=llm)
     generator = OpenAIGenerator(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
@@ -57,12 +62,12 @@ def init_base_components():
     )
 
     base_components = {
-        "reranker": reranker,
-        "context_optimizer": context_optimizer,
-        "query_optimizer": query_optimizer,
+        "pre_retrieval_optimizer": pre_retrieval_optimizer,
+        "post_retrieval_optimizer": post_retrieval_optimizer,
         "context_evaluator": context_evaluator,
         "generator": generator,
-        "settings": settings
+        "settings": settings,
+        "llm": llm
     }
 
 
@@ -76,24 +81,38 @@ async def get_or_load_pipeline(kb_name: str) -> RAGPipeline:
     print(f"🔄 正在加载知识库: {kb_name} ...")
     persist_dir = KB_DICT.get(kb_name, settings.knowledge_persist_dir)
 
-    retriever = LlamaIndexRetriever(
-        index=None,
-        embed_base_url=settings.embedding_base_url,  # 修复：移除多余的引号
-        embed_model_name=settings.embedding_model,
-        embed_api_key=settings.embedding_api_key,
+    # HybridRetriever 初始化
+    retriever = HybridRetriever(
+        retrievers=[
+            FAISSRetriever(
+                index=None,
+                embed_base_url=settings.embedding_base_url,
+                embed_model_name=settings.embedding_model,
+                embed_api_key=settings.embedding_api_key,
+                top_k=5,
+                persist_dir=persist_dir,
+            ),
+            BM25Retriever(
+                top_k=5,
+                persist_dir=os.path.join(persist_dir, "bm25_index"),
+            ),
+            GraphRetriever(
+                llm_model_name=settings.llm_model,
+                llm_base_url=settings.llm_base_url,
+                llm_api_key=settings.llm_api_key,
+                embed_model_name=settings.embedding_model,
+                embed_base_url=settings.embedding_base_url,
+                embed_api_key=settings.embedding_api_key,
+                persist_dir=os.path.join(persist_dir, "graph_index"),
+            )
+        ],
     )
 
-    if os.path.exists(persist_dir):
-        await retriever.load_index(persist_dir)
-    else:
-        print(f"⚠️ 警告: 知识库路径 {persist_dir} 不存在，将使用空知识库。")
-
-    # 组装针对该知识库的 Pipeline
+    # Pipeline 组装
     pipeline = RAGPipeline(
+        pre_retrieval_optimizer=base_components["pre_retrieval_optimizer"],
         retriever=retriever,
-        reranker=base_components["reranker"],
-        context_optimizer=base_components["context_optimizer"],
-        query_optimizer=base_components["query_optimizer"],
+        post_retrieval_optimizer=base_components["post_retrieval_optimizer"],
         context_evaluator=base_components["context_evaluator"],
         generator=base_components["generator"],
         settings=base_components["settings"],
@@ -202,13 +221,20 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
 
 # ================== 启动 ==================
 if __name__ == "__main__":
-    # 1. 初始化通用大模型组件
+    # 解决 asyncio 嵌套运行问题 (同 batch_run.py)
+    import nest_asyncio
+    nest_asyncio.apply()
+    # 1. 初始化日志配置 (从 Settings 获取级别，比如 INFO 或 DEBUG)
+    setup_logging(settings.log_level, settings.log_format)
+    logger = logging.getLogger(__name__)
+
+    # 2. 初始化通用大模型组件
     init_base_components()
 
-    # 2. 可选：在服务启动时预先加载默认知识库（避免用户第一次发消息时等待太久）
+    # 3. 可选：在服务启动时预先加载默认知识库（避免用户第一次发消息时等待太久）
     print("正在预热默认知识库...")
     loop = asyncio.get_event_loop()
     loop.run_until_complete(get_or_load_pipeline("hotpotqa"))
 
-    # 3. 启动 WebUI
+    # 4. 启动 WebUI
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
