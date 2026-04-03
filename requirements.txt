@@ -6,6 +6,7 @@ langchain-openai>=0.1.0
 langchain-core>=0.2.0
 
 # retriever
+llama-index-llms-langchain
 llama-index-core>=0.10.0
 llama-index-graph-stores-neo4j
 llama-index-embeddings-openai>=0.1.0

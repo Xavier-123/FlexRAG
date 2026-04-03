@@ -32,7 +32,7 @@
 
 - 🗄️ **多策略混合检索**：内置 `FAISSRetriever`（密集向量）、`BM25Retriever`（稀疏关键词）、`GraphRetriever`（知识图谱）三种检索器，并通过 `HybridRetriever` 融合结果，消除单一召回策略的盲区。
 
-- 📚 **完整知识库构建流水线**：`FaissKnowledgeBuilder` 支持 `.txt` / `.md` / `.pdf` 文件批量加载、分块、调用 vLLM 嵌入端点向量化，并持久化 FAISS 索引；可选同步构建 BM25 稀疏索引和 Neo4j / 本地知识图谱索引。
+- 📚 **完整知识库构建流水线**：`FAISSRetriever` 支持 `.txt` / `.md` / `.pdf` 文件批量加载、分块、调用 vLLM 嵌入端点向量化，并持久化 FAISS 索引；可选同步构建 BM25 稀疏索引和 Neo4j / 本地知识图谱索引。
 
 - 🖥️ **Gradio Web UI + 多知识库秒切**：`web_UI.py` 提供开箱即用的聊天界面，支持 hotpotqa / 2wikimultihopqa / musique / nq 等多知识库下拉切换，首次加载后自动缓存，切换延迟接近零。
 

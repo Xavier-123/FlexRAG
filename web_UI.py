@@ -44,14 +44,15 @@ def init_base_components():
     pre_retrieval_optimizer = PreQueryOptimizer([])
 
     # 2. 后检索优化器 (包装 Reranker 和 ContextOptimizer)
-    reranker = OpenAILikeReranker(
-        base_url=settings.reranker_base_url,
-        model=settings.reranker_model,
-        api_key=settings.reranker_api_key,
-        top_k=5  # 默认取 5，可根据需要关联 settings
-    )
-    context_optimizer = LLMContextOptimizer(llm=llm)
-    post_retrieval_optimizer = PostRetrieval([reranker, context_optimizer])
+    post_retrieval_optimizer = PostRetrieval([
+        # OpenAILikeReranker(
+        #     base_url=settings.reranker_base_url,
+        #     model=settings.reranker_model,
+        #     api_key=settings.reranker_api_key,
+        #     top_k=5  # 默认取 5，可根据需要关联 settings
+        # ),
+        LLMContextOptimizer(llm=llm)
+    ])
 
     # 3. 评估器与生成器
     context_evaluator = LLMContextEvaluator(llm=llm)
@@ -92,19 +93,19 @@ async def get_or_load_pipeline(kb_name: str) -> RAGPipeline:
                 top_k=5,
                 persist_dir=persist_dir,
             ),
-            BM25Retriever(
-                top_k=5,
-                persist_dir=os.path.join(persist_dir, "bm25_index"),
-            ),
-            GraphRetriever(
-                llm_model_name=settings.llm_model,
-                llm_base_url=settings.llm_base_url,
-                llm_api_key=settings.llm_api_key,
-                embed_model_name=settings.embedding_model,
-                embed_base_url=settings.embedding_base_url,
-                embed_api_key=settings.embedding_api_key,
-                persist_dir=os.path.join(persist_dir, "graph_index"),
-            )
+            # BM25Retriever(
+            #     top_k=5,
+            #     persist_dir=os.path.join(persist_dir, "bm25_index"),
+            # ),
+            # GraphRetriever(
+            #     llm_model_name=settings.llm_model,
+            #     llm_base_url=settings.llm_base_url,
+            #     llm_api_key=settings.llm_api_key,
+            #     embed_model_name=settings.embedding_model,
+            #     embed_base_url=settings.embedding_base_url,
+            #     embed_api_key=settings.embedding_api_key,
+            #     persist_dir=os.path.join(persist_dir, "graph_index"),
+            # )
         ],
     )
 
@@ -223,6 +224,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
 if __name__ == "__main__":
     # 解决 asyncio 嵌套运行问题 (同 batch_run.py)
     import nest_asyncio
+
     nest_asyncio.apply()
     # 1. 初始化日志配置 (从 Settings 获取级别，比如 INFO 或 DEBUG)
     setup_logging(settings.log_level, settings.log_format)

@@ -175,6 +175,7 @@ async def build(args: argparse.Namespace) -> None:
         embed_base_url=args.embedding_base_url,
         embed_model_name=args.embedding_model,
         embed_api_key=args.embedding_api_key,
+        persist_dir=output_dir,
     )
 
     # ---- load ----

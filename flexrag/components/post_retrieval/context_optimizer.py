@@ -111,5 +111,5 @@ class LLMContextOptimizer(BasePostRetrieval):
             )
             optimized = optimized[:max_chars]
 
-        logger.info("Context Optimized: ", optimized)
+        logger.info("Context Optimized: %s", optimized)
         return optimized, prompt_string

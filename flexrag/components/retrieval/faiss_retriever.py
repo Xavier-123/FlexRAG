@@ -7,7 +7,8 @@ import faiss
 import json
 from typing import Any
 
-from llama_index.core import Settings, SimpleDirectoryReader, Document
+from llama_index.core import Settings, SimpleDirectoryReader
+from llama_index.core import Document as LlamaDocument
 from llama_index.core import StorageContext, VectorStoreIndex, load_index_from_storage
 from llama_index.core.base.base_retriever import BaseRetriever
 from llama_index.core.schema import NodeWithScore
@@ -27,7 +28,7 @@ _PROBE_TEXT = "dimension probe"
 class _CustomReader(BaseReader):
     """自定义 JSON 读取器，专门处理 [{"idx": 0, "title": "...", "text": "..."}, ...] 格式。"""
 
-    def load_data(self, file: str, extra_info: dict | None = None) -> list[Document]:
+    def load_data(self, file: str, extra_info: dict | None = None) -> list[LlamaDocument]:
         with open(file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -61,7 +62,7 @@ class _CustomReader(BaseReader):
             if idx is not None:
                 metadata["idx"] = idx
 
-            docs.append(Document(text=content, metadata=metadata))
+            docs.append(LlamaDocument(text=content, metadata=metadata))
 
         return docs
 
@@ -70,9 +71,9 @@ class FAISSRetriever(BaseFlexRetriever):
 
     def __init__(
             self,
-            index: VectorStoreIndex | None,
             embed_base_url: str,
             embed_model_name: str,
+            index: VectorStoreIndex | None = None,
             embed_api_key: str | None = None,
             top_k: int | None = 5,
             persist_dir: str | None = None,
