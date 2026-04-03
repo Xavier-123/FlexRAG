@@ -16,12 +16,15 @@ class PostRetrieval:
             accumulated_context: list[str],
             max_tokens: int,
     ) -> Any:
-        for i, optimizer in enumerate(self.optimizers):
+        for optimizer in self.optimizers:
             if isinstance(optimizer, OpenAILikeReranker):
                 documents = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
 
-        for i, optimizer in enumerate(self.optimizers):
+        for optimizer in self.optimizers:
             if isinstance(optimizer, LLMContextOptimizer):
                 optimized_query, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
+                return optimized_query, prompt_string
 
-        return optimized_query, prompt_string
+        # Fallback: no LLMContextOptimizer present – join document texts directly
+        optimized_context = "\n\n".join(doc.text for doc in documents)
+        return optimized_context, ""
