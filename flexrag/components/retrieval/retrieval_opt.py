@@ -2,7 +2,7 @@ import logging
 from typing import List
 
 from flexrag.common.schema import Document
-from flexrag.components.retrieval import BaseFlexRetriever, FAISSRetriever
+from flexrag.components.retrieval import BaseFlexRetriever, MultiVectorRetriever, BM25Retriever, GraphRetriever
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class HybridRetriever(BaseFlexRetriever):
     def __init__(
             self,
-            retrievers: List[BaseFlexRetriever | FAISSRetriever],
+            retrievers: List[BaseFlexRetriever | MultiVectorRetriever | BM25Retriever | GraphRetriever],
             weights: List[float] = None,
     ) -> None:
         self.retrievers = retrievers

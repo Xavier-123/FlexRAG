@@ -46,12 +46,14 @@ class GraphRetriever(BaseFlexRetriever):
 
     def __init__(
             self,
-            llm_model_name: str | None = None,
-            llm_base_url: str | None = None,
-            llm_api_key: str | None = None,
-            embed_model_name: str | None = None,
-            embed_base_url: str | None = None,
-            embed_api_key: str | None = None,
+            embed_model,
+            llm: ChatOpenAI | None = None,
+            # llm_model_name: str | None = None,
+            # llm_base_url: str | None = None,
+            # llm_api_key: str | None = None,
+            # embed_model_name: str | None = None,
+            # embed_base_url: str | None = None,
+            # embed_api_key: str | None = None,
             top_k: int | None = 2,
             persist_dir: str | None = "./storage/simple_graph",
     ) -> None:
@@ -59,11 +61,8 @@ class GraphRetriever(BaseFlexRetriever):
         self._graph_retriever = None
         self._persist_dir = persist_dir
         self._similarity_top_k = top_k
-        self._embed_model = OpenAILikeEmbedding(model=embed_model_name, base_url=embed_base_url, api_key=embed_api_key)
-        if llm_model_name:
-            llm = ChatOpenAI(model=llm_model_name, api_key=llm_api_key, base_url=llm_base_url, temperature=0.0)
-            llama_index_llm = LangChainLLM(llm=llm)
-            Settings.llm = llama_index_llm
+        self._embed_model = embed_model
+        Settings.llm = LangChainLLM(llm=llm)
         Settings.embed_model = self._embed_model
 
         # 尝试加载本地已有的图索引

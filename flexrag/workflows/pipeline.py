@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from flexrag.common import RAGOutput, Settings
 from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
-from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, FAISSRetriever, GraphRetriever
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
@@ -126,6 +126,12 @@ class RAGPipeline:
             temperature=0.0,
         )
 
+        embed_model = OpenAILikeEmbedding(
+            model_name=settings.embedding_model,
+            base_url=settings.embedding_base_url,
+            api_key=settings.embedding_api_key
+        )
+
         pre_retrieval_optimizer = PreQueryOptimizer([
             # QueryRewriter(llm=llm),
             # QueryExpander(llm=llm),
@@ -136,11 +142,9 @@ class RAGPipeline:
         bm25_dir = os.path.join(settings.knowledge_persist_dir, "bm25_index")
         retriever = HybridRetriever(
             retrievers=[
-                # FAISSRetriever(
+                # MultiVectorRetriever(
                 #     index=None,
-                #     embed_base_url=settings.embedding_base_url,
-                #     embed_model_name=settings.embedding_model,
-                #     embed_api_key=settings.embedding_api_key,
+                #     embed_model=embed_model,
                 #     top_k=5,
                 #     persist_dir=persist_dir,
                 # ),

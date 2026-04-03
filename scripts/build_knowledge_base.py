@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 """
-Build a FAISS vector knowledge base from local documents.
+Build a vector knowledge base from local documents.
 
 This standalone script loads documents from a directory (or individual files),
 chunks them, embeds them via a remote embedding endpoint, and persists the
-resulting FAISS index to disk.
-
-The persisted index can later be loaded by
-:class:`~flexrag.retrievers.LlamaIndexRetriever` for retrieval.
+resulting index to disk.
 
 Usage
 -----
@@ -35,6 +32,8 @@ import logging
 import sys
 import time
 from pathlib import Path
+from langchain_openai import ChatOpenAI
+from llama_index.core import SimpleDirectoryReader
 
 # 引入分词和BM25库
 try:
@@ -47,7 +46,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from flexrag.components.retrieval import FAISSRetriever
+from flexrag.components.retrieval import OpenAILikeEmbedding, MultiVectorRetriever, _CustomReader
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +161,7 @@ async def build(args: argparse.Namespace) -> None:
     chunk_overlap = args.chunk_overlap
 
     # ---- safety check ----
-    if FAISSRetriever.index_exists(output_dir) and not args.force:
+    if MultiVectorRetriever.index_exists(output_dir) and not args.force:
         print(
             f"[ERROR] An index already exists at '{output_dir}'.\n"
             "       Use --force to overwrite it.",
@@ -171,25 +170,38 @@ async def build(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # ---- builder ----
-    builder = FAISSRetriever(
-        embed_base_url=args.embedding_base_url,
-        embed_model_name=args.embedding_model,
-        embed_api_key=args.embedding_api_key,
-        persist_dir=output_dir,
+    llm = ChatOpenAI(
+        model=args.llm_model,
+        api_key=args.llm_api_key,
+        base_url=args.llm_base_url,
+        temperature=0.0,
+    )
+
+    embed_model = OpenAILikeEmbedding(
+        model_name=args.embedding_model,
+        base_url=args.embedding_base_url,
+        api_key=args.embedding_api_key
+    )
+
+    # builder = FAISSRetriever(
+    builder = MultiVectorRetriever(
+        embed_model=embed_model,
     )
 
     # ---- load ----
     source = args.input_dir if args.input_dir else args.files
+    reader = SimpleDirectoryReader(
+        input_dir=source,
+        file_extractor={".json": _CustomReader()}
+    )
+
     t0 = time.perf_counter()
-    doc_count = await builder.load_files(source)
+    doc_count = await builder.load_files(reader)
     elapsed_load = time.perf_counter() - t0
     print(f"[INFO] Loaded {doc_count} document(s) in {elapsed_load:.1f}s.")
 
     # ---- build dense index ----
-    print(
-        f"[INFO] Building index (chunk_size={chunk_size}, "
-        f"chunk_overlap={chunk_overlap}) ..."
-    )
+    print(f"[INFO] Building index (chunk_size={chunk_size}, "f"chunk_overlap={chunk_overlap}) ...")
     t1 = time.perf_counter()
     await builder.build_index(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     elapsed_build = time.perf_counter() - t1
@@ -238,12 +250,8 @@ async def build(args: argparse.Namespace) -> None:
 
         graph_retriever = GraphRetriever(
             # graph_retriever = Neo4jGraphRetriever(
-            llm_model_name=args.llm_model,
-            llm_base_url=args.llm_base_url,
-            llm_api_key=args.llm_api_key,
-            embed_model_name=args.embedding_model,
-            embed_base_url=args.embedding_base_url,
-            embed_api_key=args.embedding_api_key,
+            llm=llm,
+            embed_model=embed_model,
             top_k=args.top_k_graph,
             persist_dir=graph_persist_dir,
         )

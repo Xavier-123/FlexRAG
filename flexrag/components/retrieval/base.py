@@ -27,7 +27,7 @@ class OpenAILikeEmbedding(BaseEmbedding):
     def __init__(
             self,
             base_url: str,
-            model: str,
+            model_name: str,
             api_key: str | None = None,
             embed_batch_size: int = 5,
             http_client: Any | None = None,
@@ -37,7 +37,7 @@ class OpenAILikeEmbedding(BaseEmbedding):
         # 1. 初始化父类 (Pydantic BaseModel)
         super().__init__(
             base_url=base_url,
-            model_name=model,
+            model_name=model_name,
             api_key=api_key,
             **kwargs
         )
@@ -50,8 +50,6 @@ class OpenAILikeEmbedding(BaseEmbedding):
             self._endpoint = base_url + "/embeddings"
         else:
             self._endpoint = base_url + "/v1/embeddings"
-        self._model = model
-        self._api_key = api_key
         self._client = http_client or httpx.Client(timeout=60.0)
         self._aclient = async_http_client or httpx.AsyncClient(timeout=60.0)
         self.embed_batch_size = embed_batch_size

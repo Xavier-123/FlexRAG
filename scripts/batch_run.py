@@ -13,7 +13,8 @@ from flexrag.workflows import RAGPipeline
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
 from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
-from flexrag.components.retrieval import FAISSRetriever, BM25Retriever, HybridRetriever, GraphRetriever
+from flexrag.components.retrieval import BM25Retriever, HybridRetriever, GraphRetriever, \
+    MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 
@@ -30,6 +31,12 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         temperature=0.0,
     )
 
+    embed_model = OpenAILikeEmbedding(
+        model_name=args.embedding_model,
+        base_url=args.embedding_base_url,
+        api_key=args.embedding_api_key
+    )
+
     pre_retrieval_optimizer = PreQueryOptimizer([
         # QueryRewriter(llm=llm),
         # QueryExpander(llm=llm),
@@ -39,26 +46,19 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
 
     retriever = HybridRetriever(
         retrievers=[
-            FAISSRetriever(
-                index=None,
-                embed_base_url=args.embedding_base_url,
-                embed_model_name=args.embedding_model,
-                embed_api_key=args.embedding_api_key,
+            MultiVectorRetriever(
+                embed_model=embed_model,
+                vector_store_type="faiss",
                 top_k=args.top_k_retrieval,
                 persist_dir=args.knowledge_persist_dir,
             ),
-            BM25Retriever(
-                top_k=args.top_k_retrieval,
-                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
-            ),
+            # BM25Retriever(
+            #     top_k=args.top_k_retrieval,
+            #     persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            # ),
             GraphRetriever(
-                llm_model_name=args.llm_model,
-                llm_base_url=args.llm_base_url,
-                llm_api_key=args.llm_api_key,
-                embed_model_name=args.embedding_model,
-                embed_base_url=args.embedding_base_url,
-                embed_api_key=args.embedding_api_key,
-                # top_k=args.top_k_graph,
+                llm=llm,
+                embed_model=embed_model,
                 persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
             )
         ],
@@ -200,6 +200,7 @@ def parse_arguments() -> argparse.Namespace:
 
 if __name__ == "__main__":
     import nest_asyncio
+
     nest_asyncio.apply()
 
     # 日志设置

@@ -12,6 +12,7 @@ llama-index-graph-stores-neo4j
 llama-index-embeddings-openai>=0.1.0
 llama-index-vector-stores-faiss>=0.1.0
 llama-index-retrievers-bm25
+llama-index-vector-stores-chroma    # 可选
 faiss-cpu>=1.7.0
 pypdf>=3.0.0
 rank_bm25
@@ -21,7 +22,7 @@ rank_bm25
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 
-# HTTP client (vLLM remote calls)
+# HTTP client
 httpx>=0.27.0
 
 # Utilities

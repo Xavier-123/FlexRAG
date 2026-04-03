@@ -74,9 +74,7 @@ FlexRAG/
     │   ├── config.py                    # Pydantic Settings（读取 .env / 环境变量）
     │   ├── schema.py                    # 数据模型：Document、RAGState、RAGOutput、ContextEvaluation
     │   ├── logging.py                   # 全局日志配置
-    │   └── exceptions.py               # 自定义异常
-    ├── indexing/
-    │   └── knowledge.py                 # FaissKnowledgeBuilder：加载文件 → 分块 → 嵌入 → 持久化
+    │   └── exceptions.py                # 自定义异常
     ├── components/
     │   ├── pre_retrieval/               # 检索前优化（策略可插拔）
     │   │   ├── query_rewriter.py        # LLM 查询改写

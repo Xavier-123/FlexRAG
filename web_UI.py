@@ -6,7 +6,7 @@ import gradio as gr
 from flexrag.workflows.pipeline import RAGPipeline
 from flexrag.common import Settings, setup_logging
 from flexrag.components.pre_retrieval import PreQueryOptimizer
-from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever, GraphRetriever
+from flexrag.components.retrieval import HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 from langchain_openai import ChatOpenAI
@@ -82,14 +82,18 @@ async def get_or_load_pipeline(kb_name: str) -> RAGPipeline:
     print(f"🔄 正在加载知识库: {kb_name} ...")
     persist_dir = KB_DICT.get(kb_name, settings.knowledge_persist_dir)
 
+    embed_model = OpenAILikeEmbedding(
+        model_name=settings.embedding_model,
+        base_url=settings.embedding_base_url,
+        api_key=settings.embedding_api_key
+    )
+
     # HybridRetriever 初始化
     retriever = HybridRetriever(
         retrievers=[
-            FAISSRetriever(
+            MultiVectorRetriever(
+                embed_model=embed_model,
                 index=None,
-                embed_base_url=settings.embedding_base_url,
-                embed_model_name=settings.embedding_model,
-                embed_api_key=settings.embedding_api_key,
                 top_k=5,
                 persist_dir=persist_dir,
             ),

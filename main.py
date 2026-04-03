@@ -48,7 +48,7 @@ from flexrag.workflows.pipeline import RAGPipeline
 from flexrag.common import Settings, setup_logging
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
-from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever
+from flexrag.components.retrieval import HybridRetriever, BM25Retriever, MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
@@ -97,10 +97,16 @@ _DEMO_CORPUS = [
 
 async def build_knowledge_base(directory: str, settings: Settings) -> None:
     """Load files from *directory*, build the FAISS index, and save it."""
-    builder = FAISSRetriever(
-        embed_base_url=settings.embedding_base_url,
-        embed_model_name=settings.embedding_model,
-        embed_api_key=settings.embedding_api_key,
+    embed_model = OpenAILikeEmbedding(
+        model_name=settings.embedding_model,
+        base_url=settings.embedding_base_url,
+        api_key=settings.embedding_api_key
+    )
+
+    builder = MultiVectorRetriever(
+        embed_model=embed_model,
+        vector_store_type="faiss",
+        top_k=settings.top_k_retrieval
     )
     count = await builder.load_files(directory)
     print(f"  Loaded {count} file(s) from '{directory}'.")
@@ -133,6 +139,12 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
         temperature=0.0,
     )
 
+    embed_model = OpenAILikeEmbedding(
+        model_name=settings.embedding_model,
+        base_url=settings.embedding_base_url,
+        api_key=settings.embedding_api_key
+    )
+
     pre_retrieval_optimizer = PreQueryOptimizer([
         QueryRewriter(llm=llm),
         QueryExpander(llm=llm),
@@ -143,11 +155,9 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
     bm25_dir = None if is_demo else os.path.join(settings.knowledge_persist_dir, "bm25_index")
     retriever = HybridRetriever(
         retrievers=[
-            FAISSRetriever(
+            MultiVectorRetriever(
+                embed_model=embed_model,
                 index=None,
-                embed_base_url=settings.embedding_base_url,
-                embed_model_name=settings.embedding_model,
-                embed_api_key=settings.embedding_api_key,
                 top_k=5,
                 persist_dir=persist_dir,
             ),
@@ -242,7 +252,7 @@ async def main() -> None:
     # ------------------------------------------------------------------ #
     # 1. Check whether a persisted knowledge base already exists         #
     # ------------------------------------------------------------------ #
-    if FAISSRetriever.index_exists(persist_dir):
+    if MultiVectorRetriever.index_exists(persist_dir):
         print(f"[INFO] Found existing knowledge base at '{persist_dir}'. Loading ...")
         pipeline = _build_pipeline(settings, is_demo=False)
 
