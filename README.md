@@ -82,7 +82,7 @@ FlexRAG/
     │   │   ├── task_splitter.py         # 复杂问题拆解为子任务
     │   │   └── terminology_enricher.py  # 专业术语增强
     │   ├── retrieval/                   # 检索器（策略可插拔）
-    │   │   ├── faiss_retriever.py       # 密集向量检索（FAISS + LlamaIndex）
+    │   │   ├── multi_vector_retriever.py  # 密集向量检索（FAISS / Chroma + LlamaIndex）
     │   │   ├── bm25_retriever.py        # 稀疏 BM25 检索
     │   │   ├── graph_retriever.py       # 本地知识图谱检索
     │   │   └── retrieval_opt.py         # HybridRetriever（多路融合）
@@ -265,7 +265,7 @@ from langchain_openai import ChatOpenAI
 from flexrag import RAGPipeline
 from flexrag.common import Settings
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander
-from flexrag.components.retrieval import HybridRetriever, FAISSRetriever, BM25Retriever
+from flexrag.components.retrieval import HybridRetriever, MultiVectorRetriever, BM25Retriever, OpenAILikeEmbedding
 from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 
@@ -279,19 +279,24 @@ async def main():
         temperature=0.0,
     )
 
+    embed_model = OpenAILikeEmbedding(
+        model_name=settings.embedding_model,
+        base_url=settings.embedding_base_url,
+        api_key=settings.embedding_api_key,
+    )
+
     # --- 检索前优化：查询改写 + 多查询扩展 ---
     pre_opt = PreQueryOptimizer([
         QueryRewriter(llm=llm),
         QueryExpander(llm=llm),
     ])
 
-    # --- 混合检索：FAISS 密集 + BM25 稀疏 ---
+    # --- 混合检索：MultiVector 密集 + BM25 稀疏 ---
     retriever = HybridRetriever(retrievers=[
-        FAISSRetriever(
+        MultiVectorRetriever(
+            embed_model=embed_model,
+            vector_store_type=settings.vector_store_type,
             index=None,
-            embed_base_url=settings.embedding_base_url,
-            embed_model_name=settings.embedding_model,
-            embed_api_key=settings.embedding_api_key,
             top_k=5,
             persist_dir=settings.knowledge_persist_dir,
         ),
