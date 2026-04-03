@@ -82,7 +82,7 @@ FlexRAG/
     │   │   ├── task_splitter.py         # 复杂问题拆解为子任务
     │   │   └── terminology_enricher.py  # 专业术语增强
     │   ├── retrieval/                   # 检索器（策略可插拔）
-    │   │   ├── multi_vector_retriever.py# 密集向量检索（FAISS / Chroma + LlamaIndex）
+    │   │   ├── multi_vector_retriever.py  # 密集向量检索（FAISS / Chroma + LlamaIndex）
     │   │   ├── bm25_retriever.py        # 稀疏 BM25 检索
     │   │   ├── graph_retriever.py       # 本地知识图谱检索
     │   │   └── retrieval_opt.py         # HybridRetriever（多路融合）
