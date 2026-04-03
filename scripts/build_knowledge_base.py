@@ -186,6 +186,7 @@ async def build(args: argparse.Namespace) -> None:
     # builder = FAISSRetriever(
     builder = MultiVectorRetriever(
         embed_model=embed_model,
+        vector_store_type=args.vector_store_type,
     )
 
     # ---- load ----

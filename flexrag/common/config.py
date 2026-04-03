@@ -95,6 +95,11 @@ class Settings(BaseSettings):
         description="Reranker model name served by vLLM",
     )
 
+    vector_store_type: str = Field(
+        "faiss",
+        validation_alias="VECTOR_STORE_TYPE",
+        description="向量检索使用的存储类型(faiss|milvus|chroma)"
+    )
     top_k_retrieval: int = Field(
         10,
         validation_alias="TOP_K_RETRIEVAL",

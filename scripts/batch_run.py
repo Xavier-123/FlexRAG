@@ -48,7 +48,7 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
         retrievers=[
             MultiVectorRetriever(
                 embed_model=embed_model,
-                vector_store_type="faiss",
+                vector_store_type=args.vector_store_type,
                 top_k=args.top_k_retrieval,
                 persist_dir=args.knowledge_persist_dir,
             ),
@@ -168,6 +168,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--knowledge-persist-dir", type=str, required=True, help="知识库持久化目录路径")
 
     # --- 向量检索相关参数 ---
+    parser.add_argument("--vector-store-type", type=str, default="faiss", help="向量检索使用的存储类型 (faiss|milvus|chroma)")
     parser.add_argument("--top-k-retrieval", type=int, default=5, help="初次检索阶段 (Retrieval) 召回的 Top-K 文档数量")
 
     # --- Reranker 相关参数 ---

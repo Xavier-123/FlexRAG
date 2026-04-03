@@ -157,6 +157,7 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
         retrievers=[
             MultiVectorRetriever(
                 embed_model=embed_model,
+                vector_store_type=settings.vector_store_type,
                 index=None,
                 top_k=5,
                 persist_dir=persist_dir,
