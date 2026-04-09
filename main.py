@@ -183,7 +183,7 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
     retriever = HybridRetriever(retrievers=retrievers)
 
     post_processors = []
-    if settings.use_openai_like_reranker:
+    if settings.use_reranker:
         post_processors.append(OpenAILikeReranker(
             base_url=settings.reranker_base_url,
             model=settings.reranker_model,

@@ -98,18 +98,6 @@ class Settings(BaseSettings):
         description="Token overlap between consecutive document chunks",
     )
 
-    # --- 向量检索相关 ---
-    top_k_retrieval: int = Field(
-        10,
-        validation_alias="TOP_K_RETRIEVAL",
-        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
-    )
-    vector_store_type: str = Field(
-        "faiss",
-        validation_alias="VECTOR_STORE_TYPE",
-        description="向量检索使用的存储类型(faiss|milvus|chroma)"
-    )
-
     # --- Reranker ---
     reranker_model: str = Field(
         "BAAI/bge-reranker-v2-m3",
@@ -186,26 +174,41 @@ class Settings(BaseSettings):
         validation_alias="USE_TERMINOLOGY_ENRICHER",
         description="Whether to enable TerminologyEnricher in the pre-retrieval optimizer",
     )
+
     # Retrievers
+    top_k_retrieval: int = Field(
+        10,
+        validation_alias="TOP_K_RETRIEVAL",
+        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
+    )
+    # 稠密检索
+    vector_store_type: str = Field(
+        "faiss",
+        validation_alias="VECTOR_STORE_TYPE",
+        description="向量检索使用的存储类型(faiss|milvus|chroma)"
+    )
     use_multi_vector_retriever: bool = Field(
         True,
         validation_alias="USE_MULTI_VECTOR_RETRIEVER",
         description="Whether to enable MultiVectorRetriever (dense/vector search)",
     )
+    # 稀疏检索
     use_bm25_retriever: bool = Field(
         True,
         validation_alias="USE_BM25_RETRIEVER",
         description="Whether to enable BM25Retriever (sparse/keyword search)",
     )
+    # 图检索
     use_graph_retriever: bool = Field(
         False,
         validation_alias="USE_GRAPH_RETRIEVER",
         description="Whether to enable GraphRetriever (knowledge-graph search)",
     )
+
     # Post-retrieval processors
-    use_openai_like_reranker: bool = Field(
+    use_reranker: bool = Field(
         True,
-        validation_alias="USE_OPENAI_LIKE_RERANKER",
+        validation_alias="USE_RERANKER",
         description="Whether to enable OpenAILikeReranker in the post-retrieval optimizer",
     )
     use_llm_context_optimizer: bool = Field(
