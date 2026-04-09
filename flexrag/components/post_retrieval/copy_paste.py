@@ -59,4 +59,4 @@ class CopyPasteRetrieval(BasePostRetrieval):
         # # Get extracted fragments
         # fragments = response.get_fragments(documents, min_length=2)
 
-        return
+        return response_refine.content, ""

@@ -176,7 +176,6 @@ MAX_ITERATIONS=3        # Agentic 迭代重查最大轮数 (3)
 # 可选高级配置
 # ============================================================
 CHECKPOINT_DB_PATH=./data/checkpoints.db   # 启用 LangGraph SQLite 检查点（不设则禁用）
-LLM_AUDIT_LOG_PATH=./data/audit_llm.jsonl  # LLM 调用审计日志（不设则禁用）
 DRAW_IMAGE_PATH=./langgraph.png            # 保存架构图（不设则不生成）
 LOG_LEVEL=INFO                             # 日志级别 (INFO)
 ```
@@ -453,6 +452,5 @@ python -m pytest tests/ -v
 | `CONTEXT_MAX_TOKENS` | `3000` | 传给生成器的上下文 token 预算 |
 | `MAX_ITERATIONS` | `3` | Agentic RAG 最大迭代重查轮数 |
 | `CHECKPOINT_DB_PATH` | `None`（禁用） | LangGraph SQLite 检查点路径 |
-| `LLM_AUDIT_LOG_PATH` | `None`（禁用） | LLM 调用审计日志路径（JSONL） |
 | `DRAW_IMAGE_PATH` | `None`（不生成） | LangGraph 架构图保存路径 |
 | `LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARNING/ERROR/CRITICAL） |

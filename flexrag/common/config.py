@@ -42,7 +42,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- LLM ---
+    # --- LLM 相关 ---
+    llm_model: str = Field(
+        "Qwen/Qwen2.5-7B-Instruct",
+        validation_alias="LLM_MODEL",
+        description="Chat LLM model name served by vLLM",
+    )
     llm_base_url: str = Field(
         default="http://localhost:8018/v1",
         validation_alias="LLM_BASE_URL",
@@ -53,8 +58,18 @@ class Settings(BaseSettings):
         validation_alias="LLM_API_KEY",
         description="API key for the LLM endpoint",
     )
+    context_max_tokens: int = Field(
+        8000,
+        validation_alias="CONTEXT_MAX_TOKENS",
+        description="Token budget for the optimised context",
+    )
 
-    # --- Embedding ---
+    # --- Embedding 相关 ---
+    embedding_model: str = Field(
+        "BAAI/bge-large-en-v1.5",
+        validation_alias="EMBEDDING_MODEL",
+        description="Embedding model name served by vLLM",
+    )
     embedding_base_url: str = Field(
         default="http://localhost:8018/v1",
         validation_alias="EMBEDDING_BASE_URL",
@@ -66,72 +81,7 @@ class Settings(BaseSettings):
         description="API key for the embedding endpoint",
     )
 
-    # --- Reranker ---
-    reranker_base_url: str = Field(
-        default="http://localhost:8018/v1",
-        validation_alias="RERANKER_BASE_URL",
-        description="Base URL of the reranker model serving endpoint",
-    )
-    reranker_api_key: str = Field(
-        default="sk-xxxx",
-        validation_alias="RERANKER_API_KEY",
-        description="API key for the reranker endpoint",
-    )
-
-    # --- Model names ---
-    llm_model: str = Field(
-        "Qwen/Qwen2.5-7B-Instruct",
-        validation_alias="LLM_MODEL",
-        description="Chat LLM model name served by vLLM",
-    )
-    embedding_model: str = Field(
-        "BAAI/bge-large-en-v1.5",
-        validation_alias="EMBEDDING_MODEL",
-        description="Embedding model name served by vLLM",
-    )
-    reranker_model: str = Field(
-        "BAAI/bge-reranker-v2-m3",
-        validation_alias="RERANKER_MODEL",
-        description="Reranker model name served by vLLM",
-    )
-
-    vector_store_type: str = Field(
-        "faiss",
-        validation_alias="VECTOR_STORE_TYPE",
-        description="向量检索使用的存储类型(faiss|milvus|chroma)"
-    )
-    top_k_retrieval: int = Field(
-        10,
-        validation_alias="TOP_K_RETRIEVAL",
-        description="Number of docs retrieved initially"
-    )
-    top_k_rerank: int = Field(
-        5,
-        validation_alias="TOP_K_RERANK",
-        description="Number of docs kept after reranking"
-    )
-    context_max_tokens: int = Field(
-        3000,
-        validation_alias="CONTEXT_MAX_TOKENS",
-        description="Token budget for the optimised context",
-    )
-    max_iterations: int = Field(
-        3,
-        validation_alias="MAX_ITERATIONS",
-        description="Maximum Agentic RAG reflection/retrieval iterations",
-    )
-    log_level: str = Field(
-        "INFO",
-        validation_alias="LOG_LEVEL",
-        description="Global logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL)",
-    )
-    log_format: str = Field(
-        "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-        validation_alias="LOG_FORMAT",
-        description="Global logging format string",
-    )
-
-    # --- Knowledge base ---
+    # --- 知识库相关 ---
     knowledge_persist_dir: str = Field(
         default="./data/knowledge_persist_dir",
         validation_alias="KNOWLEDGE_PERSIST_DIR",
@@ -148,10 +98,75 @@ class Settings(BaseSettings):
         description="Token overlap between consecutive document chunks",
     )
 
+    # --- 向量检索相关 ---
+    top_k_retrieval: int = Field(
+        10,
+        validation_alias="TOP_K_RETRIEVAL",
+        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
+    )
+    vector_store_type: str = Field(
+        "faiss",
+        validation_alias="VECTOR_STORE_TYPE",
+        description="向量检索使用的存储类型(faiss|milvus|chroma)"
+    )
+
+    # --- Reranker ---
+    reranker_model: str = Field(
+        "BAAI/bge-reranker-v2-m3",
+        validation_alias="RERANKER_MODEL",
+        description="Reranker model name served by vLLM",
+    )
+    reranker_base_url: str = Field(
+        default="http://localhost:8018/v1",
+        validation_alias="RERANKER_BASE_URL",
+        description="Base URL of the reranker model serving endpoint",
+    )
+    reranker_api_key: str = Field(
+        default="sk-xxxx",
+        validation_alias="RERANKER_API_KEY",
+        description="API key for the reranker endpoint",
+    )
+    top_k_rerank: int = Field(
+        5,
+        validation_alias="TOP_K_RERANK",
+        description="Number of docs kept after reranking"
+    )
+
+    # --- 执行控制与文件 IO ---
+    max_iterations: int = Field(
+        3,
+        validation_alias="MAX_ITERATIONS",
+        description="Maximum Agentic RAG iterations",
+    )
+    log_level: str = Field(
+        "INFO",
+        validation_alias="LOG_LEVEL",
+        description="Global logging level (DEBUG/INFO/WARNING/ERROR/CRITICAL)",
+    )
+    log_format: str = Field(
+        "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+        validation_alias="LOG_FORMAT",
+        description="Global logging format string",
+    )
+    max_concurrent_tasks: int = Field(
+        default=5,
+        validation_alias="MAX_CONCURRENT_TASKS",
+        description="最大并发任务数",
+    )
+    input_file: Optional[str] = Field(
+        default=None,
+        validation_alias="INPUT_FILE",
+        description="输入的 QA 数据 JSON 文件路径",
+    )
+    output_file: str = Field(
+        default="./eval_results.json",
+        validation_alias="OUTPUT_FILE",
+        description="输出的测试结果文件路径",
+    )
 
     # --- Graph architecture diagram ---
     draw_image_path: Optional[str] = Field(
-        default=None,
+        default="./AgenticRAG-Architecture.png",
         validation_alias="DRAW_IMAGE_PATH",
         description="If set, saves the LangGraph architecture diagram (PNG) to this path",
     )
@@ -163,15 +178,6 @@ class Settings(BaseSettings):
         description=(
             "Path to the SQLite database used for LangGraph checkpoint persistence "
             "(e.g. './data/checkpoints.db'). When None, checkpointing is disabled."
-        ),
-    )
-    llm_audit_log_path: Optional[str] = Field(
-        default=None,
-        validation_alias="LLM_AUDIT_LOG_PATH",
-        description=(
-            "Path to a JSONL file where every LLM prompt and response is appended "
-            "for audit purposes (e.g. './data/audit_llm.jsonl'). "
-            "When None, LLM auditing is disabled."
         ),
     )
 

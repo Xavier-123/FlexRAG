@@ -21,17 +21,14 @@ class PostRetrieval:
         for optimizer in self.optimizers:
             if isinstance(optimizer, OpenAILikeReranker):
                 documents = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
+                optimized_context, prompt_string = '\n\n'.join(doc.text for doc in documents), ""
 
         for optimizer in self.optimizers:
             if isinstance(optimizer, LLMContextOptimizer):
-                optimized_query, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
+                optimized_context, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
 
         for optimizer in self.optimizers:
             if isinstance(optimizer, CopyPasteRetrieval):
-                optimized_query, prompt_string = await optimizer.optimize(query, documents, accumulated_context,
+                optimized_context, prompt_string = await optimizer.optimize(query, documents, accumulated_context,
                                                                           max_tokens)
-                return optimized_query, prompt_string
-
-        # Fallback: no LLMContextOptimizer present – join document texts directly
-        optimized_context = "\n\n".join(doc.text for doc in documents)
-        return optimized_context, ""
+        return optimized_context, prompt_string
