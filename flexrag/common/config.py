@@ -164,6 +164,61 @@ class Settings(BaseSettings):
         description="输出的测试结果文件路径",
     )
 
+    # --- Pipeline component feature flags ---
+    # Pre-retrieval query optimizers
+    use_query_rewriter: bool = Field(
+        True,
+        validation_alias="USE_QUERY_REWRITER",
+        description="Whether to enable QueryRewriter in the pre-retrieval optimizer",
+    )
+    use_query_expander: bool = Field(
+        True,
+        validation_alias="USE_QUERY_EXPANDER",
+        description="Whether to enable QueryExpander in the pre-retrieval optimizer",
+    )
+    use_task_splitter: bool = Field(
+        True,
+        validation_alias="USE_TASK_SPLITTER",
+        description="Whether to enable TaskSplitter in the pre-retrieval optimizer",
+    )
+    use_terminology_enricher: bool = Field(
+        False,
+        validation_alias="USE_TERMINOLOGY_ENRICHER",
+        description="Whether to enable TerminologyEnricher in the pre-retrieval optimizer",
+    )
+    # Retrievers
+    use_multi_vector_retriever: bool = Field(
+        True,
+        validation_alias="USE_MULTI_VECTOR_RETRIEVER",
+        description="Whether to enable MultiVectorRetriever (dense/vector search)",
+    )
+    use_bm25_retriever: bool = Field(
+        True,
+        validation_alias="USE_BM25_RETRIEVER",
+        description="Whether to enable BM25Retriever (sparse/keyword search)",
+    )
+    use_graph_retriever: bool = Field(
+        False,
+        validation_alias="USE_GRAPH_RETRIEVER",
+        description="Whether to enable GraphRetriever (knowledge-graph search)",
+    )
+    # Post-retrieval processors
+    use_openai_like_reranker: bool = Field(
+        True,
+        validation_alias="USE_OPENAI_LIKE_RERANKER",
+        description="Whether to enable OpenAILikeReranker in the post-retrieval optimizer",
+    )
+    use_llm_context_optimizer: bool = Field(
+        True,
+        validation_alias="USE_LLM_CONTEXT_OPTIMIZER",
+        description="Whether to enable LLMContextOptimizer in the post-retrieval optimizer",
+    )
+    use_copy_paste_retrieval: bool = Field(
+        False,
+        validation_alias="USE_COPY_PASTE_RETRIEVAL",
+        description="Whether to enable CopyPasteRetrieval in the post-retrieval optimizer",
+    )
+
     # --- Graph architecture diagram ---
     draw_image_path: Optional[str] = Field(
         default="./AgenticRAG-Architecture.png",
