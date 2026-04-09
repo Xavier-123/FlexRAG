@@ -160,7 +160,7 @@ async def run_batch_test(qa_data: List[Dict], settings: Settings):
         os.makedirs(output_dir, exist_ok=True)
     with open(settings.output_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
-    logger.info("Results saved to eval_results.json")
+    logger.info(f"Results saved to {settings.output_file}")
 
 
 if __name__ == "__main__":
