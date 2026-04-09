@@ -37,48 +37,56 @@ async def setup_pipeline(settings: Settings) -> RAGPipeline:
         api_key=settings.embedding_api_key
     )
 
-    pre_retrieval_optimizer = PreQueryOptimizer([
-        # QueryRewriter(llm=llm),
-        # QueryExpander(llm=llm),
-        # TaskSplitter(llm=llm),
-        # TerminologyEnricher(llm=llm),
-    ])
+    pre_optimizers = []
+    if settings.use_query_rewriter:
+        pre_optimizers.append(QueryRewriter(llm=llm))
+    if settings.use_query_expander:
+        pre_optimizers.append(QueryExpander(llm=llm))
+    if settings.use_task_splitter:
+        pre_optimizers.append(TaskSplitter(llm=llm))
+    if settings.use_terminology_enricher:
+        pre_optimizers.append(TerminologyEnricher(llm=llm))
+    pre_retrieval_optimizer = PreQueryOptimizer(pre_optimizers)
 
-    retriever = HybridRetriever(
-        retrievers=[
-            MultiVectorRetriever(
-                embed_model=embed_model,
-                vector_store_type=settings.vector_store_type,
-                top_k=settings.top_k_retrieval,
-                persist_dir=settings.knowledge_persist_dir,
-            ),
-            BM25Retriever(
-                top_k=settings.top_k_retrieval,
-                persist_dir=os.path.join(settings.knowledge_persist_dir, "bm25_index"),
-            ),
-            # GraphRetriever(
-            #     llm=llm,
-            #     embed_model=embed_model,
-            #     persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
-            # )
-        ],
-    )
+    retrievers = []
+    if settings.use_multi_vector_retriever:
+        retrievers.append(MultiVectorRetriever(
+            embed_model=embed_model,
+            vector_store_type=settings.vector_store_type,
+            top_k=settings.top_k_retrieval,
+            persist_dir=settings.knowledge_persist_dir,
+        ))
+    if settings.use_bm25_retriever:
+        retrievers.append(BM25Retriever(
+            top_k=settings.top_k_retrieval,
+            persist_dir=os.path.join(settings.knowledge_persist_dir, "bm25_index"),
+        ))
+    if settings.use_graph_retriever:
+        retrievers.append(GraphRetriever(
+            llm=llm,
+            embed_model=embed_model,
+            persist_dir=os.path.join(settings.knowledge_persist_dir, "graph_index"),
+        ))
+    retriever = HybridRetriever(retrievers=retrievers)
 
-    post_retrieval_optimizer = PostRetrieval([
-        # OpenAILikeReranker(
-        #     base_url=args.reranker_base_url,
-        #     model=args.reranker_model,
-        #     api_key=args.reranker_api_key,
-        #     top_k=args.top_k_rerank
-        # ),
-        LLMContextOptimizer(llm=llm),
-        # CopyPasteRetrieval(
-        #     model=settings.llm_model,
-        #     base_url=settings.llm_base_url,
-        #     api_key=settings.llm_api_key,
-        #     pipeline="cp-refine"
-        # )
-    ])
+    post_processors = []
+    if settings.use_openai_like_reranker:
+        post_processors.append(OpenAILikeReranker(
+            base_url=settings.reranker_base_url,
+            model=settings.reranker_model,
+            api_key=settings.reranker_api_key,
+            top_k=settings.top_k_rerank
+        ))
+    if settings.use_llm_context_optimizer:
+        post_processors.append(LLMContextOptimizer(llm=llm))
+    if settings.use_copy_paste_retrieval:
+        post_processors.append(CopyPasteRetrieval(
+            model=settings.llm_model,
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            pipeline="cp-refine"
+        ))
+    post_retrieval_optimizer = PostRetrieval(post_processors)
 
     context_evaluator = LLMContextEvaluator(llm=llm)
 
