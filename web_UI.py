@@ -3,7 +3,7 @@ import os
 import logging
 import gradio as gr
 
-from flexrag.workflows.pipeline import RAGPipeline
+from flexrag.workflows import RAGPipeline
 from flexrag.common import Settings, setup_logging
 from flexrag.components.pre_retrieval import (
     PreQueryOptimizer,

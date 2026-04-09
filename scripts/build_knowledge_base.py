@@ -134,12 +134,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable DEBUG-level logging.",
     )
+    parser.add_argument(
+        "--vector-store-type",
+        type=str,
+        default="faiss",
+    )
     # 允许用户选择是否开启稀疏检索
     parser.add_argument("--enable-sparse", action="store_true",
                         help="Build a BM25 sparse index alongside the FAISS dense index.")
     # 允许用户选择是否开启稀疏检索
     parser.add_argument("--enable-graph", action="store_true",
-                        help="Build a BM25 sparse index alongside the FAISS dense index.")
+                        help="Build a Graph index.")
     parser.add_argument("--top-k-graph", type=int, default=2,
                         help="检索最相关的节点/边数量 (仅在 --enable-graph 时生效)")
     parser.add_argument("--llm-model", type=str, default="Qwen/Qwen3.5-35B-A3B")
@@ -256,7 +261,6 @@ async def build(args: argparse.Namespace) -> None:
             top_k=args.top_k_graph,
             persist_dir=graph_persist_dir,
         )
-        print("正在抽取实体和关系，构建图谱 (这需要调用 LLM，请稍候)...")
         t3 = time.perf_counter()
         await graph_retriever.build_graph(builder._raw_docs[:5])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
         elapsed_graph = time.perf_counter() - t3

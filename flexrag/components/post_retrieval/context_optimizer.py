@@ -12,6 +12,7 @@ to a simple truncation strategy so that the pipeline never stalls.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from langchain_core.language_models import BaseChatModel
@@ -30,10 +31,31 @@ _SYSTEM_PROMPT = (
     "Separate extracted passages with a blank line."
 )
 
+# _SYSTEM_PROMPT_ZH = (
+#     "你是一个精准的上下文提取专家。给定一个用户问题和若干文档段落，请仅提取并返回与回答该问题直接相关的句子或段落。"
+#     "请勿添加任何评论、引言或结语。"
+#     "不同提取片段之间请用空行分隔。"
+# )
+
 _SYSTEM_PROMPT_ZH = (
-    "你是一个精准的上下文提取专家。给定一个用户问题和若干文档段落，请仅提取并返回与回答该问题直接相关的句子或段落。"
-    "请勿添加任何评论、引言或结语。"
-    "不同提取片段之间请用空行分隔。"
+    "你是一个严格的上下文抽取模型（Context Extractor）。"
+    "任务是：根据用户问题，从提供的文档中提取可以用于回答问题的相关的原文句子或片段。"
+
+    "抽取规则："
+    "1. 优先提取与问题直接相关的内容。"
+    "2. 如果问题涉及多个实体关系（例如：电影 -> 演员 -> 成就），需要补充相关实体的关键信息（如演员的代表作或知名原因）。"
+    "3. 允许跨文档组合信息（multi-hop）。"
+    "4. 仅提取原文，不得改写或总结。"
+    "5. 按回答问题的完整性排序，而不仅是表面相关性。"
+    "6. 若无相关内容，返回空数组 []。"
+
+    "输出要求："
+    "1. 仅输出 JSON，不得包含任何解释或额外文本。"
+    "2. JSON 必须合法可解析。"
+    "3. 使用如下结构："
+    "{"
+    '  "results": ["...", "..."]'
+    "}"
 )
 
 
@@ -42,9 +64,15 @@ class LLMContextOptimizer(BasePostRetrieval):
             self,
             llm: BaseChatModel,
             chars_per_token: int = 2,
+            max_input_tokens: int = 16384,
     ) -> None:
         self._llm = llm
         self._chars_per_token = chars_per_token
+        self._max_input_tokens = max_input_tokens
+
+    def _estimate_tokens(self, text: str) -> int:
+        """根据字符数粗略估算 token 数量"""
+        return len(text) // self._chars_per_token
 
     # ------------------------------------------------------------------
     # BaseContextOptimizer interface
@@ -57,18 +85,6 @@ class LLMContextOptimizer(BasePostRetrieval):
             accumulated_context: list[str],
             max_tokens: int = 8192,
     ) -> (str, str):
-        """Extract relevant passages from *documents* using the LLM.
-
-        Args:
-            query: The user's original question.
-            documents: Reranked documents to distil.
-            max_tokens: Approximate token budget for the output context.
-            accumulated_context: 历史检索的有用信息
-
-        Returns:
-            A compact, relevant context string ready to be included in the
-            generator prompt.
-        """
         if not documents:
             return ""
 
@@ -79,7 +95,7 @@ class LLMContextOptimizer(BasePostRetrieval):
         human_prompt = (
             f"Question: {query}\n\n"
             f"Documents:\n{doc_listing}\n\n"
-            f"history context:\n{accumulated_context}\n\n"
+            f"history context:\n{accumulated_context[-2:]}\n\n"
             "提取相关段落。"
         )
         prompt_string = f"【System】:\n{_SYSTEM_PROMPT_ZH}\n\n【Human】:\n{human_prompt}"

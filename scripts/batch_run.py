@@ -12,7 +12,7 @@ from flexrag.common import setup_logging, Settings
 from flexrag.workflows import RAGPipeline
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
-from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
+from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer, CopyPasteRetrieval
 from flexrag.components.retrieval import BM25Retriever, HybridRetriever, GraphRetriever, \
     MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
@@ -52,26 +52,32 @@ async def setup_pipeline(args: argparse.Namespace) -> RAGPipeline:
                 top_k=args.top_k_retrieval,
                 persist_dir=args.knowledge_persist_dir,
             ),
-            # BM25Retriever(
-            #     top_k=args.top_k_retrieval,
-            #     persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
-            # ),
-            GraphRetriever(
-                llm=llm,
-                embed_model=embed_model,
-                persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
-            )
+            BM25Retriever(
+                top_k=args.top_k_retrieval,
+                persist_dir=os.path.join(args.knowledge_persist_dir, "bm25_index"),
+            ),
+            # GraphRetriever(
+            #     llm=llm,
+            #     embed_model=embed_model,
+            #     persist_dir=os.path.join(args.knowledge_persist_dir, "graph_index"),
+            # )
         ],
     )
 
     post_retrieval_optimizer = PostRetrieval([
-        OpenAILikeReranker(
-            base_url=args.reranker_base_url,
-            model=args.reranker_model,
-            api_key=args.reranker_api_key,
-            top_k=args.top_k_rerank
-        ),
-        LLMContextOptimizer(llm=llm)
+        # OpenAILikeReranker(
+        #     base_url=args.reranker_base_url,
+        #     model=args.reranker_model,
+        #     api_key=args.reranker_api_key,
+        #     top_k=args.top_k_rerank
+        # ),
+        LLMContextOptimizer(llm=llm),
+        CopyPasteRetrieval(
+            model=args.llm_model,
+            base_url=args.llm_base_url,
+            api_key=args.llm_api_key,
+            pipeline="cp-refine"
+        )
     ])
 
     context_evaluator = LLMContextEvaluator(llm=llm)
