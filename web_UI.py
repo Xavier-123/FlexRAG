@@ -299,12 +299,8 @@ async def get_or_load_pipeline(
     if "GraphRetriever" in retriever_names:
         retrievers.append(
             GraphRetriever(
-                llm_model_name=settings.llm_model,
-                llm_base_url=settings.llm_base_url,
-                llm_api_key=settings.llm_api_key,
-                embed_model_name=settings.embedding_model,
-                embed_base_url=settings.embedding_base_url,
-                embed_api_key=settings.embedding_api_key,
+                llm=llm,
+                embed_model=embed_model,
                 persist_dir=os.path.join(persist_dir, "graph_index"),
             )
         )
@@ -590,5 +586,6 @@ if __name__ == "__main__":
 
     # 4. 启动 WebUI（开启 queue 以支持流式生成器推送）
     demo.queue()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
+    # demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
+    demo.launch(server_name="127.0.0.1", server_port=7860, share=True)
 

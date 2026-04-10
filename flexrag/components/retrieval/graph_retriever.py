@@ -48,12 +48,6 @@ class GraphRetriever(BaseFlexRetriever):
             self,
             embed_model,
             llm: ChatOpenAI | None = None,
-            # llm_model_name: str | None = None,
-            # llm_base_url: str | None = None,
-            # llm_api_key: str | None = None,
-            # embed_model_name: str | None = None,
-            # embed_base_url: str | None = None,
-            # embed_api_key: str | None = None,
             top_k: int | None = 2,
             persist_dir: str | None = "./storage/simple_graph",
     ) -> None:
