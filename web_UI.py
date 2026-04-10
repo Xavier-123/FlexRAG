@@ -95,7 +95,7 @@ def _active_subcomponents(
         source = post_opt_names
     else:
         return []
-    return [mapping.get(n, n) for n in source if n in mapping or mapping == {}]
+    return [mapping.get(n, n) for n in source if n in mapping]
 
 
 # ================== 执行状态 HTML 渲染 ==================
@@ -541,7 +541,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
         # ---- 右侧对话区 ----
         with gr.Column(scale=5):
             chatbot = gr.Chatbot(
-                height=420,
+                height=420,  # reduced from 480 to leave room for the status panel below
                 buttons=["copy"],
                 layout="bubble",
             )
