@@ -109,6 +109,213 @@ _PULSE_CSS = """
 </style>
 """
 
+# ================== 多轮详情渲染 ==================
+
+# Human-readable field names shown in the detail panels.
+_FIELD_LABELS: dict[str, str] = {
+    "original_query":       "原始问题",
+    "optimized_queries":    "优化后查询列表",
+    "current_queries":      "当前查询",
+    "missing_info":         "缺失信息",
+    "missing_info_history": "缺失信息历史",
+    "iteration_count":      "迭代次数",
+    "retrieved_docs":       "检索文档",
+    "optimized_context":    "优化后上下文",
+    "accumulated_context":  "累积上下文",
+    "context_sufficient":   "上下文充足",
+    "judge_reason":         "评估理由",
+    "answer":               "最终答案",
+    "evidence":             "引用来源",
+}
+
+# Fields to display for each node's input and output.
+_NODE_DISPLAY_FIELDS: dict[str, dict[str, list[str]]] = {
+    "pre_retrieval_optimizer": {
+        "input":  ["original_query", "iteration_count", "missing_info", "missing_info_history"],
+        "output": ["optimized_queries", "current_queries"],
+    },
+    "retrieve": {
+        "input":  ["optimized_queries"],
+        "output": ["retrieved_docs"],
+    },
+    "post_retrieval_optimizer": {
+        "input":  ["original_query", "retrieved_docs"],
+        "output": ["optimized_context"],
+    },
+    "context_evaluator": {
+        "input":  ["original_query", "optimized_context"],
+        "output": ["context_sufficient", "missing_info", "judge_reason", "accumulated_context"],
+    },
+    "generate": {
+        "input":  ["original_query", "accumulated_context"],
+        "output": ["answer", "evidence"],
+    },
+}
+
+_ROUNDS_DETAIL_CSS = """
+<style>
+.rd-wrap{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;margin:8px 0;}
+.rd-round{border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;overflow:hidden;background:#fff;}
+.rd-round>details>summary{cursor:pointer;padding:10px 14px;background:#f0f9ff;font-weight:700;color:#1e40af;
+  list-style:none;display:flex;align-items:center;gap:8px;border-bottom:1px solid transparent;}
+.rd-round>details>summary::-webkit-details-marker{display:none;}
+.rd-round>details[open]>summary{border-bottom:1px solid #bfdbfe;}
+.rd-nodes{padding:10px;display:flex;flex-direction:column;gap:8px;}
+.rd-node{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;}
+.rd-node>details>summary{cursor:pointer;padding:7px 12px;font-weight:600;color:#374151;background:#f9fafb;
+  list-style:none;display:flex;align-items:center;gap:6px;}
+.rd-node>details>summary::-webkit-details-marker{display:none;}
+.rd-node>details[open]>summary{border-bottom:1px solid #e5e7eb;}
+.rd-io{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.rd-io-section{background:#fafafa;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;}
+.rd-io-section h4{margin:0 0 6px 0;font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;font-weight:700;}
+.rd-field{margin:4px 0;}
+.rd-field-key{font-weight:600;color:#374151;font-size:12px;}
+.rd-field-val{color:#1f2937;font-size:12px;margin-top:2px;word-break:break-word;white-space:pre-wrap;}
+.rd-badge{font-size:11px;padding:1px 8px;border-radius:9px;margin-left:auto;}
+.rd-ok{background:#d1fae5;color:#065f46;}
+.rd-retry{background:#fef3c7;color:#92400e;}
+.rd-running{background:#dbeafe;color:#1e40af;}
+</style>
+"""
+
+
+def _escape(text: str) -> str:
+    """HTML-escape a string."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _fmt_value(key: str, value) -> str:
+    """Format a single state field value as safe HTML."""
+    if value is None:
+        return "<em style='color:#9ca3af;'>—</em>"
+
+    if isinstance(value, bool):
+        return "✅ 是" if value else "❌ 否"
+
+    if isinstance(value, int):
+        return str(value)
+
+    if isinstance(value, str):
+        truncated = value[:600] + ("…" if len(value) > 600 else "")
+        return _escape(truncated)
+
+    if isinstance(value, list):
+        if not value:
+            return "<em style='color:#9ca3af;'>（空列表）</em>"
+        if key == "retrieved_docs":
+            count = len(value)
+            parts = [f"<em>共 {count} 个文档</em>"]
+            for i, doc in enumerate(value[:3], 1):
+                text = (doc.get("text", "") if isinstance(doc, dict) else str(doc))[:250]
+                parts.append(f"<b>[{i}]</b> {_escape(text)}{'…' if len(text) == 250 else ''}")
+            if count > 3:
+                parts.append(f"<em>… 另有 {count - 3} 个文档</em>")
+            return "<br>".join(parts)
+        # Generic list
+        items = []
+        for i, item in enumerate(value[:5], 1):
+            s = str(item)
+            items.append(f"[{i}] " + _escape(s[:300] + ("…" if len(s) > 300 else "")))
+        if len(value) > 5:
+            items.append(f"<em>… 另有 {len(value) - 5} 项</em>")
+        return "<br>".join(items)
+
+    if isinstance(value, dict):
+        s = str(value)
+        return _escape(s[:500] + ("…" if len(s) > 500 else ""))
+
+    return _escape(str(value)[:500])
+
+
+def _render_io_fields(node_name: str, data: dict, io_type: str) -> str:
+    """Render the input or output fields for a single node as HTML rows."""
+    if not data:
+        return "<em style='color:#9ca3af;'>暂无数据</em>"
+    fields = _NODE_DISPLAY_FIELDS.get(node_name, {}).get(io_type, list(data.keys()))
+    parts = []
+    for key in fields:
+        if key not in data:
+            continue
+        label = _FIELD_LABELS.get(key, key)
+        formatted = _fmt_value(key, data[key])
+        parts.append(
+            f'<div class="rd-field">'
+            f'<div class="rd-field-key">{label}</div>'
+            f'<div class="rd-field-val">{formatted}</div>'
+            f"</div>"
+        )
+    return "\n".join(parts) if parts else "<em style='color:#9ca3af;'>暂无数据</em>"
+
+
+def render_rounds_detail(rounds_data: list) -> str:
+    """Render per-round, per-node collapsible detail panels as HTML.
+
+    Args:
+        rounds_data: List of round dicts, each with keys ``round`` (int),
+            ``nodes`` (dict of node_name → ``{input, output}``), and
+            ``status`` (``"running"`` | ``"done"``).
+
+    Returns:
+        An HTML string suitable for a ``gr.HTML`` component.
+    """
+    if not rounds_data or not any(r["nodes"] for r in rounds_data):
+        return ""
+
+    parts = [_ROUNDS_DETAIL_CSS, '<div class="rd-wrap">']
+    parts.append(
+        '<p style="font-weight:700;color:#374151;margin:0 0 8px 0;font-size:13px;">'
+        '📋 各轮次详细数据</p>'
+    )
+
+    for round_data in rounds_data:
+        rnum = round_data["round"]
+        nodes = round_data["nodes"]
+        status = round_data.get("status", "running")
+
+        # Badge based on context_evaluator output
+        eval_out = nodes.get("context_evaluator", {}).get("output", {})
+        if eval_out:
+            sufficient = eval_out.get("context_sufficient")
+            if sufficient is True:
+                badge = '<span class="rd-badge rd-ok">✅ 上下文充足</span>'
+            elif sufficient is False:
+                badge = '<span class="rd-badge rd-retry">🔄 需补充信息</span>'
+            else:
+                badge = ""
+        elif status == "running":
+            badge = '<span class="rd-badge rd-running">⚡ 进行中</span>'
+        else:
+            badge = ""
+
+        parts.append(
+            f'<div class="rd-round"><details{"" if rnum > 1 else " open"}>'
+            f'<summary>🔁 第 {rnum} 轮 {badge}</summary>'
+            f'<div class="rd-nodes">'
+        )
+
+        for node_name in PIPELINE_ORDER:
+            if node_name not in nodes:
+                continue
+            node_data = nodes[node_name]
+            meta = NODE_META[node_name]
+            icon, label = meta["icon"], meta["label"]
+            input_html = _render_io_fields(node_name, node_data.get("input", {}), "input")
+            output_html = _render_io_fields(node_name, node_data.get("output", {}), "output")
+            parts.append(
+                f'<div class="rd-node"><details>'
+                f"<summary>{icon} {label}</summary>"
+                f'<div class="rd-io">'
+                f'<div class="rd-io-section"><h4>📥 输入</h4>{input_html}</div>'
+                f'<div class="rd-io-section"><h4>📤 输出</h4>{output_html}</div>'
+                f"</div></details></div>"
+            )
+
+        parts.append("</div></details></div>")
+
+    parts.append("</div>")
+    return "\n".join(parts)
+
 
 def render_execution_status(
     completed_nodes: list,
@@ -355,12 +562,12 @@ async def get_or_load_pipeline(
 async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names, post_opt_names):
     """Async generator: streams node-level execution status to the UI in real-time.
 
-    Yields a 3-tuple ``(msg_input_value, chat_history, status_html)`` on every
-    meaningful event so that Gradio re-renders the status panel without waiting
+    Yields a 4-tuple ``(msg_input_value, chat_history, status_html, rounds_html)`` on
+    every meaningful event so that Gradio re-renders both panels without waiting
     for the whole pipeline to finish.
     """
     if not message.strip():
-        yield "", chat_history, ""
+        yield "", chat_history, "", ""
         return
 
     if chat_history is None:
@@ -371,12 +578,12 @@ async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names
             {"role": "user", "content": message},
             {"role": "assistant", "content": "⚠️ **请至少选择一个检索器后再提问。**"},
         ]
-        yield "", new_chat, ""
+        yield "", new_chat, "", ""
         return
 
     # ── 初始状态：Pipeline 启动 ──────────────────────────────────────────────
     status = render_execution_status([], None, pre_opt_names, retriever_names, post_opt_names)
-    yield "", chat_history, status
+    yield "", chat_history, status, ""
 
     try:
         pipeline = await get_or_load_pipeline(kb_name, retriever_names, pre_opt_names, post_opt_names)
@@ -385,7 +592,7 @@ async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names
             {"role": "user", "content": message},
             {"role": "assistant", "content": f"❌ **Pipeline 初始化失败**: {e}"},
         ]
-        yield "", error_chat, ""
+        yield "", error_chat, "", ""
         return
 
     # ── 流式执行 Pipeline ────────────────────────────────────────────────────
@@ -396,35 +603,53 @@ async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names
     answer = ""
     evidence: list = []
 
+    # Per-round detail tracking
+    rounds_data: list = [{"round": 1, "nodes": {}, "status": "running"}]
+
     async for event in pipeline.astream_run(message):
         etype = event["type"]
 
         if etype == "node_start":
             node = event["node"]
-            # 每当 pre_retrieval_optimizer 再次启动，说明进入了新的迭代轮次
+            # Every time pre_retrieval_optimizer starts again → new iteration
             if node == "pre_retrieval_optimizer":
                 if first_pre_retrieval:
                     first_pre_retrieval = False
                 else:
                     iteration += 1
+                    # Finalise the previous round and open a new one
+                    rounds_data[-1]["status"] = "done"
+                    rounds_data.append({"round": iteration, "nodes": {}, "status": "running"})
             current_node = node
+            # Store input data for this node in the current round
+            if node not in rounds_data[-1]["nodes"]:
+                rounds_data[-1]["nodes"][node] = {}
+            rounds_data[-1]["nodes"][node]["input"] = event.get("input", {})
+
             status = render_execution_status(
                 completed_nodes, current_node,
                 pre_opt_names, retriever_names, post_opt_names,
                 iteration=iteration,
             )
-            yield "", chat_history, status
+            rounds_html = render_rounds_detail(rounds_data)
+            yield "", chat_history, status, rounds_html
 
         elif etype == "node_end":
             node = event["node"]
             completed_nodes.append(node)
             current_node = None
+            # Store output data for this node in the current round
+            if node not in rounds_data[-1]["nodes"]:
+                rounds_data[-1]["nodes"][node] = {}
+            rounds_data[-1]["nodes"][node]["output"] = event.get("output", {})
+
             status = render_execution_status(
                 completed_nodes, current_node,
                 pre_opt_names, retriever_names, post_opt_names,
                 iteration=iteration,
             )
-            yield "", chat_history, status
+            rounds_html = render_rounds_detail(rounds_data)
+            yield "", chat_history, status, rounds_html
 
         elif etype == "result":
             answer = event.get("answer", "")
@@ -441,7 +666,9 @@ async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names
                 iteration=iteration,
                 error=event["message"],
             )
-            yield "", error_chat, status
+            rounds_data[-1]["status"] = "done"
+            rounds_html = render_rounds_detail(rounds_data)
+            yield "", error_chat, status, rounds_html
             return
 
     # ── 构造最终回复（含折叠的 evidence） ────────────────────────────────────
@@ -459,13 +686,15 @@ async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names
         {"role": "user", "content": message},
         {"role": "assistant", "content": final_message},
     ]
+    rounds_data[-1]["status"] = "done"
     status = render_execution_status(
         completed_nodes, None,
         pre_opt_names, retriever_names, post_opt_names,
         iteration=iteration,
         done=True,
     )
-    yield "", new_chat, status
+    rounds_html = render_rounds_detail(rounds_data)
+    yield "", new_chat, status, rounds_html
 
 
 # ================== UI ==================
@@ -548,6 +777,12 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
                 label="Pipeline 执行状态",
             )
 
+            # ---- 多轮详情面板（可折叠） ----
+            rounds_display = gr.HTML(
+                value="",
+                label="各轮次详细数据",
+            )
+
             with gr.Row():
                 msg_input = gr.Textbox(
                     placeholder="请输入问题...",
@@ -558,7 +793,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
 
     # ---- 绑定提交事件 ----
     shared_inputs = [msg_input, chatbot, kb_selector, retriever_selector, pre_opt_selector, post_opt_selector]
-    shared_outputs = [msg_input, chatbot, status_display]
+    shared_outputs = [msg_input, chatbot, status_display, rounds_display]
 
     submit_btn.click(fn=respond, inputs=shared_inputs, outputs=shared_outputs)
     msg_input.submit(fn=respond, inputs=shared_inputs, outputs=shared_outputs)

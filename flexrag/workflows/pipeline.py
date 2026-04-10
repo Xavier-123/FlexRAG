@@ -18,6 +18,21 @@ from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# State keys to extract per node for input display in the UI.
+# Only a curated subset of the full LangGraph state is forwarded so that the
+# streaming events stay lightweight.
+# ---------------------------------------------------------------------------
+_NODE_INPUT_KEYS: dict[str, list[str]] = {
+    "pre_retrieval_optimizer": [
+        "original_query", "missing_info", "iteration_count", "missing_info_history",
+    ],
+    "retrieve": ["optimized_queries", "original_query"],
+    "post_retrieval_optimizer": ["retrieved_docs", "original_query"],
+    "context_evaluator": ["original_query", "optimized_context", "accumulated_context"],
+    "generate": ["original_query", "accumulated_context", "optimized_context"],
+}
+
 
 class RAGPipeline:
     """End-to-end modular RAG pipeline. Orchestrates the full retrieval-augmented generation workflow:
@@ -281,7 +296,14 @@ class RAGPipeline:
                     continue
 
                 if event_type == "on_chain_start":
-                    yield {"type": "node_start", "node": node_name}
+                    raw_input = event.get("data", {}).get("input", {})
+                    keys = _NODE_INPUT_KEYS.get(node_name, [])
+                    node_input = (
+                        {k: raw_input[k] for k in keys if k in raw_input}
+                        if isinstance(raw_input, dict)
+                        else {}
+                    )
+                    yield {"type": "node_start", "node": node_name, "input": node_input}
 
                 elif event_type == "on_chain_end":
                     output = event.get("data", {}).get("output", {})
@@ -292,7 +314,11 @@ class RAGPipeline:
                             answer = output["answer"]
                         if "evidence" in output:
                             evidence = output["evidence"]
-                    yield {"type": "node_end", "node": node_name}
+                    # Strip the internal node_trace list to keep events compact.
+                    node_output: dict = {}
+                    if isinstance(output, dict):
+                        node_output = {k: v for k, v in output.items() if k != "node_trace"}
+                    yield {"type": "node_end", "node": node_name, "output": node_output}
 
         except Exception as exc:  # noqa: BLE001
             logger.exception("Streaming pipeline error: %s", exc)
