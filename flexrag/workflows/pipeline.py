@@ -33,6 +33,10 @@ _NODE_INPUT_KEYS: dict[str, list[str]] = {
     "generate": ["original_query", "accumulated_context", "optimized_context"],
 }
 
+# Internal state key that stores the per-node execution trace; excluded from
+# the streaming events so that the events stay compact.
+_INTERNAL_TRACE_KEY = "node_trace"
+
 
 class RAGPipeline:
     """End-to-end modular RAG pipeline. Orchestrates the full retrieval-augmented generation workflow:
@@ -317,7 +321,7 @@ class RAGPipeline:
                     # Strip the internal node_trace list to keep events compact.
                     node_output: dict = {}
                     if isinstance(output, dict):
-                        node_output = {k: v for k, v in output.items() if k != "node_trace"}
+                        node_output = {k: v for k, v in output.items() if k != _INTERNAL_TRACE_KEY}
                     yield {"type": "node_end", "node": node_name, "output": node_output}
 
         except Exception as exc:  # noqa: BLE001

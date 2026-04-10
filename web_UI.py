@@ -182,7 +182,19 @@ _ROUNDS_DETAIL_CSS = """
 
 def _escape(text: str) -> str:
     """HTML-escape a string."""
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+    )
+
+
+# Truncation limits used when formatting state values for display.
+_MAX_STR_LEN = 600
+_MAX_DOC_PREVIEW_LEN = 250
+_MAX_LIST_ITEM_LEN = 300
+_MAX_DICT_STR_LEN = 500
 
 
 def _fmt_value(key: str, value) -> str:
@@ -197,7 +209,7 @@ def _fmt_value(key: str, value) -> str:
         return str(value)
 
     if isinstance(value, str):
-        truncated = value[:600] + ("…" if len(value) > 600 else "")
+        truncated = value[:_MAX_STR_LEN] + ("…" if len(value) > _MAX_STR_LEN else "")
         return _escape(truncated)
 
     if isinstance(value, list):
@@ -207,8 +219,8 @@ def _fmt_value(key: str, value) -> str:
             count = len(value)
             parts = [f"<em>共 {count} 个文档</em>"]
             for i, doc in enumerate(value[:3], 1):
-                text = (doc.get("text", "") if isinstance(doc, dict) else str(doc))[:250]
-                parts.append(f"<b>[{i}]</b> {_escape(text)}{'…' if len(text) == 250 else ''}")
+                text = (doc.get("text", "") if isinstance(doc, dict) else str(doc))[:_MAX_DOC_PREVIEW_LEN]
+                parts.append(f"<b>[{i}]</b> {_escape(text)}{'…' if len(text) == _MAX_DOC_PREVIEW_LEN else ''}")
             if count > 3:
                 parts.append(f"<em>… 另有 {count - 3} 个文档</em>")
             return "<br>".join(parts)
@@ -216,16 +228,16 @@ def _fmt_value(key: str, value) -> str:
         items = []
         for i, item in enumerate(value[:5], 1):
             s = str(item)
-            items.append(f"[{i}] " + _escape(s[:300] + ("…" if len(s) > 300 else "")))
+            items.append(f"[{i}] " + _escape(s[:_MAX_LIST_ITEM_LEN] + ("…" if len(s) > _MAX_LIST_ITEM_LEN else "")))
         if len(value) > 5:
             items.append(f"<em>… 另有 {len(value) - 5} 项</em>")
         return "<br>".join(items)
 
     if isinstance(value, dict):
         s = str(value)
-        return _escape(s[:500] + ("…" if len(s) > 500 else ""))
+        return _escape(s[:_MAX_DICT_STR_LEN] + ("…" if len(s) > _MAX_DICT_STR_LEN else ""))
 
-    return _escape(str(value)[:500])
+    return _escape(str(value)[:_MAX_DICT_STR_LEN])
 
 
 def _render_io_fields(node_name: str, data: dict, io_type: str) -> str:
