@@ -39,6 +39,180 @@ base_components = {}
 # Pipeline 缓存，按 (kb_name, retrievers, pre_opts, post_opts) 组合键存储
 pipelines_cache = {}
 
+# ================== Pipeline 节点元信息 ==================
+
+# LangGraph 节点的执行顺序（用于状态面板渲染）
+PIPELINE_ORDER = [
+    "pre_retrieval_optimizer",
+    "retrieve",
+    "post_retrieval_optimizer",
+    "context_evaluator",
+    "generate",
+]
+
+# 节点显示名称与图标
+NODE_META = {
+    "pre_retrieval_optimizer": {"icon": "⚡", "label": "查询优化"},
+    "retrieve":                 {"icon": "🔍", "label": "文档检索"},
+    "post_retrieval_optimizer": {"icon": "🎯", "label": "后处理优化"},
+    "context_evaluator":        {"icon": "🧐", "label": "上下文评估"},
+    "generate":                 {"icon": "✨", "label": "答案生成"},
+}
+
+# 各节点下的子组件映射（配置选项名 → 中文描述）
+_SUB_COMPONENTS = {
+    "pre_retrieval_optimizer": {
+        "QueryRewriter":       "查询改写",
+        "QueryExpander":       "查询扩展",
+        "TaskSplitter":        "问题分解",
+        "TerminologyEnricher": "术语增强",
+    },
+    "retrieve": {
+        "MultiVectorRetriever": "向量检索",
+        "BM25Retriever":        "BM25检索",
+        "GraphRetriever":       "图谱检索",
+    },
+    "post_retrieval_optimizer": {
+        "OpenAILikeReranker":  "重排序",
+        "LLMContextOptimizer": "上下文精炼",
+    },
+}
+
+
+def _active_subcomponents(
+    node: str,
+    pre_opt_names: list,
+    retriever_names: list,
+    post_opt_names: list,
+) -> list[str]:
+    """Return human-readable labels for the active sub-components of *node*."""
+    mapping = _SUB_COMPONENTS.get(node, {})
+    if node == "pre_retrieval_optimizer":
+        source = pre_opt_names
+    elif node == "retrieve":
+        source = retriever_names
+    elif node == "post_retrieval_optimizer":
+        source = post_opt_names
+    else:
+        return []
+    return [mapping.get(n, n) for n in source if n in mapping or mapping == {}]
+
+
+# ================== 执行状态 HTML 渲染 ==================
+
+_PULSE_CSS = """
+<style>
+@keyframes flexrag-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59,130,246,0.4); }
+  50%       { opacity: 0.85; box-shadow: 0 0 0 6px rgba(59,130,246,0); }
+}
+</style>
+"""
+
+
+def render_execution_status(
+    completed_nodes: list,
+    current_node: str | None,
+    pre_opt_names: list,
+    retriever_names: list,
+    post_opt_names: list,
+    iteration: int = 1,
+    done: bool = False,
+    error: str | None = None,
+) -> str:
+    """Render the live pipeline execution status as an HTML string.
+
+    Args:
+        completed_nodes: Ordered list of node names that have already finished
+            (may contain duplicates when the pipeline loops).
+        current_node: Node that is currently executing, or ``None``.
+        pre_opt_names / retriever_names / post_opt_names: Active component names
+            used to generate the per-node sub-component hint.
+        iteration: Current loop iteration number (starts at 1).
+        done: ``True`` when the whole pipeline has finished successfully.
+        error: Non-empty error message when the pipeline failed.
+    """
+    nodes_html_parts = []
+
+    for node in PIPELINE_ORDER:
+        count = completed_nodes.count(node)
+        is_running = node == current_node
+        is_done = count > 0
+        meta = NODE_META[node]
+        icon = meta["icon"]
+        label = meta["label"]
+
+        if is_running:
+            subs = _active_subcomponents(node, pre_opt_names, retriever_names, post_opt_names)
+            sub_line = (
+                f'<div style="font-size:11px;margin-top:3px;color:#1d4ed8;">'
+                + " · ".join(subs)
+                + "</div>"
+                if subs
+                else ""
+            )
+            node_html = (
+                f'<div style="'
+                f"background:#dbeafe;border:2px solid #3b82f6;border-radius:8px;"
+                f"padding:8px 14px;text-align:center;min-width:90px;"
+                f'animation:flexrag-pulse 1.4s ease-in-out infinite;">'
+                f'<div style="font-size:15px;">🔄</div>'
+                f'<div style="font-size:12px;font-weight:700;color:#1e40af;margin-top:2px;">{label}</div>'
+                f"{sub_line}"
+                f"</div>"
+            )
+        elif is_done:
+            badge = (
+                f' <span style="font-size:10px;background:#6ee7b7;'
+                f'border-radius:8px;padding:1px 5px;color:#065f46;">×{count}</span>'
+                if count > 1
+                else ""
+            )
+            node_html = (
+                f'<div style="'
+                f"background:#d1fae5;border:2px solid #10b981;border-radius:8px;"
+                f'padding:8px 14px;text-align:center;min-width:90px;">'
+                f'<div style="font-size:15px;">✅</div>'
+                f'<div style="font-size:12px;font-weight:700;color:#065f46;margin-top:2px;">{label}{badge}</div>'
+                f"</div>"
+            )
+        else:
+            node_html = (
+                f'<div style="'
+                f"background:#f3f4f6;border:2px solid #e5e7eb;border-radius:8px;"
+                f'padding:8px 14px;text-align:center;min-width:90px;opacity:0.55;">'
+                f'<div style="font-size:15px;">{icon}</div>'
+                f'<div style="font-size:12px;font-weight:600;color:#9ca3af;margin-top:2px;">{label}</div>'
+                f"</div>"
+            )
+        nodes_html_parts.append(node_html)
+
+    arrow = '<div style="font-size:16px;color:#9ca3af;padding:0 2px;display:flex;align-items:center;">→</div>'
+    flow_html = arrow.join(nodes_html_parts)
+
+    if error:
+        header = f'<div style="color:#ef4444;font-weight:700;margin-bottom:8px;font-size:13px;">❌ 执行出错</div>'
+    elif done:
+        iter_info = f"  ·  共 {iteration} 轮迭代" if iteration > 1 else ""
+        header = f'<div style="color:#10b981;font-weight:700;margin-bottom:8px;font-size:13px;">✅ Pipeline 执行完成{iter_info}</div>'
+    elif current_node:
+        iter_tag = f"第 {iteration} 轮  ·  " if iteration > 1 else ""
+        header = f'<div style="color:#3b82f6;font-weight:700;margin-bottom:8px;font-size:13px;">🔄 {iter_tag}正在执行…</div>'
+    elif completed_nodes:
+        header = f'<div style="color:#6b7280;font-weight:700;margin-bottom:8px;font-size:13px;">⏳ 第 {iteration} 轮  ·  等待下一节点…</div>'
+    else:
+        header = '<div style="color:#6b7280;font-weight:700;margin-bottom:8px;font-size:13px;">🚀 Pipeline 启动中…</div>'
+
+    return (
+        _PULSE_CSS
+        + f'<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;'
+        f'padding:12px 16px;margin:6px 0;box-shadow:0 1px 4px rgba(0,0,0,0.08);">'
+        f"{header}"
+        f'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">'
+        f"{flow_html}"
+        f"</div></div>"
+    )
+
 
 # ================== 初始化基础组件 ==================
 def init_base_components():
@@ -181,51 +355,121 @@ async def get_or_load_pipeline(
     return pipeline
 
 
-# ================== Gradio 响应逻辑（原生 Async） ==================
+# ================== Gradio 响应逻辑（流式 Async 生成器） ==================
 async def respond(message, chat_history, kb_name, retriever_names, pre_opt_names, post_opt_names):
-    """Gradio 原生支持 async def，不再需要手动 new_event_loop"""
+    """Async generator: streams node-level execution status to the UI in real-time.
+
+    Yields a 3-tuple ``(msg_input_value, chat_history, status_html)`` on every
+    meaningful event so that Gradio re-renders the status panel without waiting
+    for the whole pipeline to finish.
+    """
     if not message.strip():
-        return "", chat_history
+        yield "", chat_history, ""
+        return
 
     if chat_history is None:
         chat_history = []
 
     if not retriever_names:
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": "⚠️ **请至少选择一个检索器后再提问。**"})
-        return "", chat_history
+        new_chat = chat_history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": "⚠️ **请至少选择一个检索器后再提问。**"},
+        ]
+        yield "", new_chat, ""
+        return
+
+    # ── 初始状态：Pipeline 启动 ──────────────────────────────────────────────
+    status = render_execution_status([], None, pre_opt_names, retriever_names, post_opt_names)
+    yield "", chat_history, status
 
     try:
-        # 1. 动态获取对应配置的 Pipeline
-        pipeline = await get_or_load_pipeline(
-            kb_name, retriever_names, pre_opt_names, post_opt_names
-        )
-
-        # 2. 运行 Pipeline
-        result = await pipeline.arun(message)
-        answer = result.answer
-        evidences = result.evidence
-
-        # 3. 构造折叠 evidence
-        evidence_html = "\n\n<details><summary><b>👉 点击展开查看参考检索片段</b></summary>\n\n"
-        if evidences:
-            for i, ev in enumerate(evidences, 1):
-                preview = ev[:200] + ("..." if len(ev) > 200 else "")
-                evidence_html += f"**[来源{i}]** {preview}\n\n"
-        else:
-            evidence_html += "未检索到相关片段。\n\n"
-        evidence_html += "</details>"
-
-        final_bot_message = answer + evidence_html
-
+        pipeline = await get_or_load_pipeline(kb_name, retriever_names, pre_opt_names, post_opt_names)
     except Exception as e:
-        final_bot_message = f"❌ **发生错误**: {str(e)}"
+        error_chat = chat_history + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": f"❌ **Pipeline 初始化失败**: {e}"},
+        ]
+        yield "", error_chat, ""
+        return
 
-    # 4. 更新对话历史
-    chat_history.append({"role": "user", "content": message})
-    chat_history.append({"role": "assistant", "content": final_bot_message})
+    # ── 流式执行 Pipeline ────────────────────────────────────────────────────
+    completed_nodes: list = []
+    current_node: str | None = None
+    iteration = 1
+    first_pre_retrieval = True
+    answer = ""
+    evidence: list = []
 
-    return "", chat_history
+    async for event in pipeline.astream_run(message):
+        etype = event["type"]
+
+        if etype == "node_start":
+            node = event["node"]
+            # 每当 pre_retrieval_optimizer 再次启动，说明进入了新的迭代轮次
+            if node == "pre_retrieval_optimizer":
+                if first_pre_retrieval:
+                    first_pre_retrieval = False
+                else:
+                    iteration += 1
+            current_node = node
+            status = render_execution_status(
+                completed_nodes, current_node,
+                pre_opt_names, retriever_names, post_opt_names,
+                iteration=iteration,
+            )
+            yield "", chat_history, status
+
+        elif etype == "node_end":
+            node = event["node"]
+            completed_nodes.append(node)
+            current_node = None
+            status = render_execution_status(
+                completed_nodes, current_node,
+                pre_opt_names, retriever_names, post_opt_names,
+                iteration=iteration,
+            )
+            yield "", chat_history, status
+
+        elif etype == "result":
+            answer = event.get("answer", "")
+            evidence = event.get("evidence", [])
+
+        elif etype == "error":
+            error_chat = chat_history + [
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": f"❌ **发生错误**: {event['message']}"},
+            ]
+            status = render_execution_status(
+                completed_nodes, None,
+                pre_opt_names, retriever_names, post_opt_names,
+                iteration=iteration,
+                error=event["message"],
+            )
+            yield "", error_chat, status
+            return
+
+    # ── 构造最终回复（含折叠的 evidence） ────────────────────────────────────
+    evidence_html = "\n\n<details><summary><b>👉 点击展开查看参考检索片段</b></summary>\n\n"
+    if evidence:
+        for i, ev in enumerate(evidence, 1):
+            preview = ev[:200] + ("..." if len(ev) > 200 else "")
+            evidence_html += f"**[来源{i}]** {preview}\n\n"
+    else:
+        evidence_html += "未检索到相关片段。\n\n"
+    evidence_html += "</details>"
+
+    final_message = answer + evidence_html
+    new_chat = chat_history + [
+        {"role": "user", "content": message},
+        {"role": "assistant", "content": final_message},
+    ]
+    status = render_execution_status(
+        completed_nodes, None,
+        pre_opt_names, retriever_names, post_opt_names,
+        iteration=iteration,
+        done=True,
+    )
+    yield "", new_chat, status
 
 
 # ================== UI ==================
@@ -297,9 +541,15 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
         # ---- 右侧对话区 ----
         with gr.Column(scale=5):
             chatbot = gr.Chatbot(
-                height=480,
+                height=420,
                 buttons=["copy"],
                 layout="bubble",
+            )
+
+            # ---- 执行状态实时面板 ----
+            status_display = gr.HTML(
+                value="",
+                label="Pipeline 执行状态",
             )
 
             with gr.Row():
@@ -312,7 +562,7 @@ with gr.Blocks(theme=gr.themes.Soft(), title="FlexRAG 智能问答系统", css=c
 
     # ---- 绑定提交事件 ----
     shared_inputs = [msg_input, chatbot, kb_selector, retriever_selector, pre_opt_selector, post_opt_selector]
-    shared_outputs = [msg_input, chatbot]
+    shared_outputs = [msg_input, chatbot, status_display]
 
     submit_btn.click(fn=respond, inputs=shared_inputs, outputs=shared_outputs)
     msg_input.submit(fn=respond, inputs=shared_inputs, outputs=shared_outputs)
@@ -338,6 +588,7 @@ if __name__ == "__main__":
         get_or_load_pipeline("hotpotqa", ["MultiVectorRetriever"], [], ["LLMContextOptimizer"])
     )
 
-    # 4. 启动 WebUI
+    # 4. 启动 WebUI（开启 queue 以支持流式生成器推送）
+    demo.queue()
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
 

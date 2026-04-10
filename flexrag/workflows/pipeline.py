@@ -224,6 +224,92 @@ class RAGPipeline:
         import asyncio
         return asyncio.run(self.arun(query, thread_id=thread_id))
 
+    async def astream_run(self, query: str, thread_id: Optional[str] = None):
+        """Execute the RAG pipeline with real-time node-level streaming events.
+
+        Uses LangGraph's ``astream_events`` to emit a progress event each time a
+        pipeline node starts or finishes, enabling live UI updates without waiting
+        for the entire workflow to complete.
+
+        Yields:
+            dict: One of the following event shapes:
+
+            * ``{"type": "node_start", "node": str}``
+              Emitted when a LangGraph node begins execution.
+            * ``{"type": "node_end", "node": str}``
+              Emitted when a LangGraph node finishes execution.
+            * ``{"type": "result", "answer": str, "evidence": list[str], "thread_id": str}``
+              Emitted once after all nodes complete – carries the final answer.
+            * ``{"type": "error", "message": str}``
+              Emitted on an unrecoverable error; no ``result`` event follows.
+
+        Args:
+            query: The user's question.
+            thread_id: Optional checkpoint thread identifier.  A fresh UUID is
+                generated per call when ``None``.
+        """
+        run_thread_id = thread_id or str(uuid.uuid4())
+        config: dict[str, Any] = {"configurable": {"thread_id": run_thread_id}}
+
+        initial_state: dict[str, Any] = {
+            "query": query,
+            "original_query": query,
+            "current_queries": {},
+            "optimized_queries": [],
+            "iteration_count": 0,
+            "max_iterations": self._settings.max_iterations,
+            "missing_info": "",
+            "missing_info_history": [],
+            "accumulated_context": [],
+            "node_trace": [],
+        }
+
+        answer: str = ""
+        evidence: list[str] = []
+        error_msg: Optional[str] = None
+
+        try:
+            async for event in self._graph.astream_events(
+                initial_state, config=config, version="v2"
+            ):
+                event_type: str = event.get("event", "")
+                metadata: dict = event.get("metadata", {})
+                node_name: Optional[str] = metadata.get("langgraph_node")
+
+                # Only process events that belong to a named graph node.
+                if not node_name:
+                    continue
+
+                if event_type == "on_chain_start":
+                    yield {"type": "node_start", "node": node_name}
+
+                elif event_type == "on_chain_end":
+                    output = event.get("data", {}).get("output", {})
+                    if isinstance(output, dict):
+                        if output.get("error"):
+                            error_msg = output["error"]
+                        if "answer" in output:
+                            answer = output["answer"]
+                        if "evidence" in output:
+                            evidence = output["evidence"]
+                    yield {"type": "node_end", "node": node_name}
+
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Streaming pipeline error: %s", exc)
+            yield {"type": "error", "message": str(exc)}
+            return
+
+        if error_msg:
+            yield {"type": "error", "message": f"RAG pipeline error: {error_msg}"}
+            return
+
+        yield {
+            "type": "result",
+            "answer": answer,
+            "evidence": evidence,
+            "thread_id": run_thread_id,
+        }
+
     async def arun(self, query: str, thread_id: Optional[str] = None):
         """Execute the full RAG pipeline for *query* asynchronously.
 
