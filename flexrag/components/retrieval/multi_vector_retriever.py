@@ -39,7 +39,7 @@ class _CustomReader(BaseReader):
         text_len = len(text)
 
         while start < text_len:
-            end = start + chunk_size
+            end = start + self.CHUNK_SIZE
 
             # 如果还没到文本末尾，尝试“软截断”
             if end < text_len:
@@ -118,8 +118,8 @@ class _CustomReader(BaseReader):
                 metadata["chunk_id"] = chunk_id
 
                 # （可选高级技巧：父子文档检索）
-                # 你可以把完整的原始 text 也存进 metadata 里。这样检索时虽然匹配的是这个 content，但传给大模型的是原汁原味的 metadata["parent_text"]
-                metadata["parent_text"] = text
+                # 你可以把完整的原始 text 也存进 metadata 里。这样检索时虽然匹配的是这个 content，但传给大模型的是原汁原味的 metadata["parent_text"]，但有可能超长
+                # metadata["parent_text"] = text
 
                 docs.append(LlamaDocument(text=content, metadata=metadata))
 
@@ -233,7 +233,8 @@ class MultiVectorRetriever:
         )
 
         self._index = load_index_from_storage(storage_context)
-        self._retriever = None
+        # self._retriever = None
+        self._retriever = self._index.as_retriever(similarity_top_k=self._top_k)
 
     # -----------------------------
     # Load files
@@ -316,8 +317,8 @@ class MultiVectorRetriever:
         return len(self._embed_model.get_text_embedding(_PROBE_TEXT))
 
     @staticmethod
-    def index_exists(self, persist_dir: str):
-        if self._index_mode == "exact":
+    def index_exists(index_mode: str, persist_dir: str):
+        if index_mode == "exact":
             faiss_path = os.path.join(persist_dir, "faiss_exact")
         else:
             faiss_path = os.path.join(persist_dir, "faiss_approx")

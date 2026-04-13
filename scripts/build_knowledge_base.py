@@ -74,7 +74,7 @@ def build_dense_index(
     # 1. 统一文本切分
     print(f"[INFO] Splitting documents (chunk_size={chunk_size}, chunk_overlap={chunk_overlap})...")
     splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    nodes = splitter.get_nodes_from_documents(builder._raw_docs)
+    nodes = splitter.get_nodes_from_documents(builder._raw_docs, show_progress=True)
     print(f"[INFO] Splitted into {len(nodes)} nodes.")
 
     # 2. 预计算 Embeddings (核心优化：避免重复调用API扣费)
@@ -83,7 +83,17 @@ def build_dense_index(
     _PROBE_TEXT = "dimension probe"
     embed_dim = len(embed_model.get_text_embedding(_PROBE_TEXT))
     texts_to_embed = [node.get_content(metadata_mode="all") for node in nodes]
-    embeddings = embed_model.get_text_embedding_batch(texts_to_embed)
+    # embeddings = embed_model.get_text_embedding_batch(texts_to_embed)
+
+    from concurrent.futures import ThreadPoolExecutor
+    from tqdm import tqdm
+    batch_size = 8
+    batches = [texts_to_embed[i:i + batch_size] for i in range(0, len(texts_to_embed), batch_size)]
+    embeddings = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(tqdm(executor.map(embed_model.get_text_embedding_batch, batches), total=len(batches)))
+    for r in results:
+        embeddings.extend(r)
 
     # 将获取到的向量强行绑定到 nodes 上
     for node, emb in zip(nodes, embeddings):
@@ -218,13 +228,14 @@ async def build(args: argparse.Namespace) -> None:
     chunk_overlap = args.chunk_overlap
 
     # ---- safety check ----
-    if MultiVectorRetriever.index_exists(output_dir) and not args.force:
+    if (MultiVectorRetriever.index_exists("exact", output_dir) or MultiVectorRetriever.index_exists("approx", output_dir)) and not args.force:
         print(
             f"[ERROR] An index already exists at '{output_dir}'.\n"
             "       Use --force to overwrite it.",
             file=sys.stderr,
         )
         sys.exit(1)
+
 
     # ---- builder ----
     llm = ChatOpenAI(
@@ -250,7 +261,7 @@ async def build(args: argparse.Namespace) -> None:
     source = args.input_dir if args.input_dir else args.files
     reader = SimpleDirectoryReader(
         input_dir=source,
-        file_extractor={".json": _CustomReader()}
+        file_extractor={".json": _CustomReader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)}
     )
 
     t0 = time.perf_counter()
@@ -280,7 +291,7 @@ async def build(args: argparse.Namespace) -> None:
             from llama_index.retrievers.bm25 import BM25Retriever
             # 将文档切分为 Nodes (节点)
             # BM25Retriever 需要输入 Nodes
-            splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=50)
+            splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
             nodes = splitter.get_nodes_from_documents(builder._raw_docs)
             # 初始化 BM25Retriever
             retriever = BM25Retriever.from_defaults(
