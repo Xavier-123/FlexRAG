@@ -10,16 +10,11 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.schema import NodeWithScore
 from llama_index.core.readers.base import BaseReader
 
-from llama_index.vector_stores.faiss import FaissVectorStore
-from llama_index.vector_stores.chroma import ChromaVectorStore
-from llama_index.vector_stores.milvus import MilvusVectorStore
-
 from flexrag.common.schema import Document
 
 # -----------------------------
 # Config
 # -----------------------------
-_FAISS_FILE = "faiss.index"
 _PROBE_TEXT = "dimension probe"
 
 
@@ -136,6 +131,7 @@ class MultiVectorRetriever:
             self,
             embed_model,
             vector_store_type: str = "faiss",  # faiss | milvus | chroma
+            index_mode: str = "exact",  # exact | approx
             collection_name: str = "default",
             host="localhost",
             port=8000,
@@ -159,10 +155,13 @@ class MultiVectorRetriever:
         self._metadata_filters = metadata_filters
 
         self._index: Optional[VectorStoreIndex] = None
+        self._index_mode = index_mode
         self._vector_store = None
         self._retriever = None
 
         if persist_dir:
+            if not os.path.exists(persist_dir):
+                raise FileNotFoundError(f"Persist directory not found: {persist_dir}")
             self._load_index(persist_dir, **kwargs)
 
     # -----------------------------
@@ -170,11 +169,15 @@ class MultiVectorRetriever:
     # -----------------------------
     def _create_vector_store(self, embed_dim: int, **kwargs):
         if self._vector_store_type == "faiss":
+            from llama_index.vector_stores.faiss import FaissVectorStore
+
             faiss_index = faiss.IndexFlatL2(embed_dim)
             return FaissVectorStore(faiss_index=faiss_index)
 
         elif self._vector_store_type == "chroma":
             import chromadb
+            from llama_index.vector_stores.chroma import ChromaVectorStore
+
             db = chromadb.PersistentClient(path=self._persist_dir)
             chroma_collection = db.get_or_create_collection(self._collection_name)
             return ChromaVectorStore(
@@ -184,6 +187,8 @@ class MultiVectorRetriever:
             )
 
         elif self._vector_store_type == "milvus":
+            from llama_index.vector_stores.milvus import MilvusVectorStore
+
             return MilvusVectorStore(dim=embed_dim, **kwargs)
 
         else:
@@ -194,15 +199,21 @@ class MultiVectorRetriever:
     # -----------------------------
     def _load_index(self, persist_dir: str, **kwargs):
         if self._vector_store_type == "faiss":
-            faiss_path = os.path.join(persist_dir, _FAISS_FILE)
-            if not os.path.exists(faiss_path):
-                raise FileNotFoundError(f"FAISS file not found: {faiss_path}")
+            from llama_index.vector_stores.faiss import FaissVectorStore
 
-            faiss_index = faiss.read_index(faiss_path)
-            self._vector_store = FaissVectorStore(faiss_index=faiss_index)
+            if self._index_mode == "exact":
+                persist_dir = os.path.join(persist_dir, "faiss_exact")
+            else:
+                persist_dir = os.path.join(persist_dir, "faiss_approx")
+
+            # faiss_index = faiss.read_index(persist_dir)
+            # self._vector_store = FaissVectorStore(faiss_index=faiss_index)
+            self._vector_store = FaissVectorStore.from_persist_dir(persist_dir)
 
         elif self._vector_store_type == "chroma":
             import chromadb
+            from llama_index.vector_stores.chroma import ChromaVectorStore
+
             db = chromadb.PersistentClient(path=persist_dir)
             chroma_collection = db.get_or_create_collection(self._collection_name)
             self._vector_store = ChromaVectorStore(
@@ -212,6 +223,8 @@ class MultiVectorRetriever:
             )
 
         elif self._vector_store_type == "milvus":
+            from llama_index.vector_stores.milvus import MilvusVectorStore
+
             self._vector_store = MilvusVectorStore(**kwargs)
 
         storage_context = StorageContext.from_defaults(
@@ -275,7 +288,6 @@ class MultiVectorRetriever:
             return all(meta.get(k) == v for k, v in final_filters.items())
 
         if final_filters:
-            # results = [r for r in documents if match(r["metadata"])]
             results = [r for r in documents if match(r.metadata)]
             return results
 
@@ -288,7 +300,11 @@ class MultiVectorRetriever:
         os.makedirs(persist_dir, exist_ok=True)
 
         if self._vector_store_type == "faiss":
-            faiss_path = os.path.join(persist_dir, _FAISS_FILE)
+            if self._index_mode == "exact":
+                faiss_path = os.path.join(persist_dir, "faiss_exact")
+            else:
+                faiss_path = os.path.join(persist_dir, "faiss_approx")
+
             await asyncio.to_thread(self._vector_store.persist, persist_path=faiss_path)
 
         await asyncio.to_thread(self._index.storage_context.persist, persist_dir=persist_dir)
@@ -300,8 +316,12 @@ class MultiVectorRetriever:
         return len(self._embed_model.get_text_embedding(_PROBE_TEXT))
 
     @staticmethod
-    def index_exists(persist_dir: str):
-        return os.path.exists(os.path.join(persist_dir, _FAISS_FILE))
+    def index_exists(self, persist_dir: str):
+        if self._index_mode == "exact":
+            faiss_path = os.path.join(persist_dir, "faiss_exact")
+        else:
+            faiss_path = os.path.join(persist_dir, "faiss_approx")
+        return os.path.exists(faiss_path)
 
 
 async def faiss_test():
