@@ -7,8 +7,9 @@ from flexrag.components.post_retrieval.copy_paste import CopyPasteRetrieval
 
 
 class PostRetrieval:
-    def __init__(self, optimizers: list[
-        LLMContextOptimizer | OpenAILikeReranker | CopyPasteRetrieval] = LLMContextOptimizer) -> None:
+    def __init__(self, optimizers=None) -> None:
+        if optimizers is None:
+            optimizers = [LLMContextOptimizer]
         self.optimizers = optimizers
 
     async def optimize(
@@ -17,7 +18,10 @@ class PostRetrieval:
             documents: list[Document],
             accumulated_context: list[str],
             max_tokens: int,
-    ) -> Any:
+    ) -> tuple[str, str]:
+        optimized_context = "\n\n".join(doc.text for doc in documents)
+        prompt_string = ""
+
         for optimizer in self.optimizers:
             if isinstance(optimizer, OpenAILikeReranker):
                 documents = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
@@ -25,7 +29,7 @@ class PostRetrieval:
 
         for optimizer in self.optimizers:
             if isinstance(optimizer, LLMContextOptimizer):
-                optimized_context, prompt_string = await optimizer.optimize(query, documents, accumulated_context, max_tokens)
+                optimized_context, prompt_string = await optimizer.optimize(query, documents, accumulated_context,                                                           max_tokens)
 
         for optimizer in self.optimizers:
             if isinstance(optimizer, CopyPasteRetrieval):

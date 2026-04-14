@@ -53,6 +53,7 @@ async def setup_pipeline(settings: Settings) -> RAGPipeline:
         retrievers.append(MultiVectorRetriever(
             embed_model=embed_model,
             vector_store_type=settings.vector_store_type,
+            dense_mode=settings.dense_mode,
             top_k=settings.top_k_retrieval,
             persist_dir=settings.knowledge_persist_dir,
         ))

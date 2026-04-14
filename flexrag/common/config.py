@@ -187,6 +187,11 @@ class Settings(BaseSettings):
         validation_alias="VECTOR_STORE_TYPE",
         description="向量检索使用的存储类型(faiss|milvus|chroma)"
     )
+    dense_mode: str = Field(
+        "exact_l2",
+        validation_alias="DENSE_MODE",
+        description="exact_l2 | exact_cosine | approx_l2 | approx_cosine，计算距离的方式和索引类型"
+    )
     use_multi_vector_retriever: bool = Field(
         True,
         validation_alias="USE_MULTI_VECTOR_RETRIEVER",

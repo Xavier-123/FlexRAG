@@ -25,6 +25,7 @@ import asyncio
 import logging
 import sys
 import time
+import numpy as np
 from pathlib import Path
 from langchain_openai import ChatOpenAI
 from llama_index.core import SimpleDirectoryReader, VectorStoreIndex, StorageContext, Settings
@@ -61,15 +62,19 @@ def build_dense_index(
         chunk_size: int = 512,
         chunk_overlap: int = 50,
         vector_db: str = "faiss",  # "faiss" 或 "milvus"
+        metric_type: str = "l2",  # "l2" (欧氏距离) 或 "cosine" (余弦相似度)
         milvus_uri: str = "./milvus_demo.db",  # 仅当 vector_db="milvus" 时生效(Milvus Lite本地文件)
         milvus_token: str = ""  # 服务端认证 Token 或 "user:password"
 ):
     """
     通用构建稠密向量索引函数，支持 FAISS 和 Milvus。
     包含 Exact (精确) 和 Approximate (近似/ANN) 两种索引。
+    支持 L2 距离和 Cosine 余弦相似度。
     """
     if vector_db not in ["faiss", "milvus"]:
         raise ValueError("vector_db 必须是 'faiss' 或 'milvus'")
+    if metric_type not in ["l2", "cosine"]:
+        raise ValueError("metric_type 必须是 'l2' 或 'cosine'")
 
     # 1. 统一文本切分
     print(f"[INFO] Splitting documents (chunk_size={chunk_size}, chunk_overlap={chunk_overlap})...")
@@ -90,10 +95,20 @@ def build_dense_index(
     batch_size = 8
     batches = [texts_to_embed[i:i + batch_size] for i in range(0, len(texts_to_embed), batch_size)]
     embeddings = []
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         results = list(tqdm(executor.map(embed_model.get_text_embedding_batch, batches), total=len(batches)))
     for r in results:
         embeddings.extend(r)
+
+    # ====== 新增核心逻辑：如果是 Cosine 相似度，需对向量进行 L2 归一化 ======
+    if metric_type == "cosine":
+        print("[INFO] Normalizing embeddings for Cosine Similarity...")
+        emb_arr = np.array(embeddings, dtype=np.float32)
+        norms = np.linalg.norm(emb_arr, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-10  # 防止除以 0
+        emb_arr = emb_arr / norms
+        embeddings = emb_arr.tolist()
+    # =================================================================
 
     # 将获取到的向量强行绑定到 nodes 上
     for node, emb in zip(nodes, embeddings):
@@ -102,15 +117,19 @@ def build_dense_index(
 
     # 3. 循环构建 Exact 和 Approximate 索引
     index_types = {
-        "exact": {"faiss_type": "FlatL2", "milvus_type": "FLAT"},
-        "approx": {"faiss_type": "HNSWFlat", "milvus_type": "HNSW"}
+        "exact": {"milvus_type": "FLAT"},
+        "approx": {"milvus_type": "HNSW"}
     }
+    # index_types = {
+    #     "exact": {"faiss_type": "FlatL2", "milvus_type": "FLAT"},
+    #     "approx": {"faiss_type": "HNSWFlat", "milvus_type": "HNSW"}
+    # }
 
     for idx_mode, config in index_types.items():
         print(f"\n[INFO] Building {vector_db.upper()} [{idx_mode.capitalize()}] index...")
         t_build = time.perf_counter()
 
-        persist_dir = os.path.join(output_dir, f"{vector_db}_{idx_mode}")
+        persist_dir = os.path.join(output_dir, f"{vector_db}_{idx_mode}_{metric_type}")
         os.makedirs(persist_dir, exist_ok=True)
 
         # ====== 根据类型初始化 Vector Store ======
@@ -118,10 +137,18 @@ def build_dense_index(
             import faiss
             from llama_index.vector_stores.faiss import FaissVectorStore
 
-            if idx_mode == "exact":
-                faiss_index = faiss.IndexFlatL2(embed_dim)
-            else:
-                faiss_index = faiss.IndexHNSWFlat(embed_dim, 32)
+            # 修改点：根据度量选择不同的 FAISS Index
+            if metric_type == "cosine":
+                if idx_mode == "exact":
+                    # Cosine = 内积 (Inner Product)，前提是向量已归一化
+                    faiss_index = faiss.IndexFlatIP(embed_dim)
+                else:
+                    faiss_index = faiss.IndexHNSWFlat(embed_dim, 32, faiss.METRIC_INNER_PRODUCT)
+            else:  # L2 距离
+                if idx_mode == "exact":
+                    faiss_index = faiss.IndexFlatL2(embed_dim)
+                else:
+                    faiss_index = faiss.IndexHNSWFlat(embed_dim, 32, faiss.METRIC_L2)
 
             vector_store = FaissVectorStore(faiss_index=faiss_index)
 
@@ -132,9 +159,10 @@ def build_dense_index(
             collection_name = f"dense_{idx_mode}"
 
             # 配置 Milvus 索引类型
+            milvus_metric = "COSINE" if metric_type == "cosine" else "L2"
             index_config = {
                 "index_type": config["milvus_type"],
-                "metric_type": "L2"
+                "metric_type": milvus_metric
             }
 
             vector_store = MilvusVectorStore(
@@ -197,6 +225,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # 是否开启稠密检索
     parser.add_argument("--enable-dense", action="store_true", help="Build a FAISS dense index.")
     parser.add_argument("--vector-store-type", type=str, default="faiss", help="faiss or milvus")
+    parser.add_argument("--metric-type", type=str, default="l2", help="l2 or cosine")
     parser.add_argument("--milvus-uri", type=str, default="http://localhost:19530", help="milvus url")
     parser.add_argument("--milvus-token", type=str, default="", help="milvus token")
 
@@ -211,7 +240,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="检索最相关的节点/边数量 (仅在 --enable-graph 时生效)")
     parser.add_argument("--llm-model", type=str, default="Qwen/Qwen3.5-35B-A3B")
     parser.add_argument("--llm-base-url", type=str, default="https://api-inference.modelscope.cn/v1")
-    parser.add_argument("--llm-api-key", type=str, default="ms-c429b084-79ba-4a00-a749-aae8681e902d")
+    parser.add_argument("--llm-api-key", type=str, default=None)
     return parser.parse_args(argv)
 
 
@@ -278,6 +307,7 @@ async def build(args: argparse.Namespace) -> None:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             vector_db=args.vector_store_type,  # "faiss" 或 "milvus"
+            metric_type=args.metric_type,  # "cosine" 或 "l2"
             milvus_uri=args.milvus_uri,
             milvus_token=args.milvus_token,
         )

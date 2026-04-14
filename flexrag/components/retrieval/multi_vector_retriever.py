@@ -131,7 +131,7 @@ class MultiVectorRetriever:
             self,
             embed_model,
             vector_store_type: str = "faiss",  # faiss | milvus | chroma
-            index_mode: str = "exact",  # exact | approx
+            dense_mode: str = "exact_l2",  # exact_l2 | exact_cosine | approx_l2 | approx_cosine
             collection_name: str = "default",
             host="localhost",
             port=8000,
@@ -143,34 +143,39 @@ class MultiVectorRetriever:
         """
         Multi vector store retriever supporting FAISS / Milvus / Chroma
         """
+        self._raw_docs = None
         self._embed_model = embed_model
         Settings.embed_model = embed_model
 
         self._vector_store_type = vector_store_type.lower()
+        self._dense_mode = dense_mode.lower()
         self._collection_name = collection_name
         self._host = host
         self._port = port
-        self._persist_dir = persist_dir
+        self._persist_dir = os.path.join(persist_dir, self._vector_store_type + "_" + dense_mode)
         self._top_k = top_k
         self._metadata_filters = metadata_filters
 
         self._index: Optional[VectorStoreIndex] = None
-        self._index_mode = index_mode
         self._vector_store = None
         self._retriever = None
 
         if persist_dir:
             if not os.path.exists(persist_dir):
                 raise FileNotFoundError(f"Persist directory not found: {persist_dir}")
-            self._load_index(persist_dir, **kwargs)
+            self._load_index(**kwargs)
 
-    # -----------------------------
-    # Vector Store Factory
-    # -----------------------------
+    def _is_index_files_exist(self) -> bool:
+        """检查具体的持久化文件是否存在"""
+        if not self._persist_dir:
+            return False
+        if self._vector_store_type == "faiss":
+            return os.path.exists(os.path.join(self._persist_dir, "default__vector_store.json"))
+        return True  # Chroma等直接看目录即可
+
     def _create_vector_store(self, embed_dim: int, **kwargs):
         if self._vector_store_type == "faiss":
             from llama_index.vector_stores.faiss import FaissVectorStore
-
             faiss_index = faiss.IndexFlatL2(embed_dim)
             return FaissVectorStore(faiss_index=faiss_index)
 
@@ -178,7 +183,11 @@ class MultiVectorRetriever:
             import chromadb
             from llama_index.vector_stores.chroma import ChromaVectorStore
 
-            db = chromadb.PersistentClient(path=self._persist_dir)
+            if self._persist_dir:
+                db = chromadb.PersistentClient(path=self._persist_dir)
+            else:
+                db = chromadb.EphemeralClient()
+
             chroma_collection = db.get_or_create_collection(self._collection_name)
             return ChromaVectorStore(
                 chroma_collection=chroma_collection,
@@ -188,8 +197,7 @@ class MultiVectorRetriever:
 
         elif self._vector_store_type == "milvus":
             from llama_index.vector_stores.milvus import MilvusVectorStore
-
-            return MilvusVectorStore(dim=embed_dim, **kwargs)
+            return MilvusVectorStore(dim=embed_dim, host=self._host, port=self._port, **kwargs)
 
         else:
             raise ValueError(f"Unsupported vector store: {self._vector_store_type}")
@@ -197,24 +205,16 @@ class MultiVectorRetriever:
     # -----------------------------
     # Load index
     # -----------------------------
-    def _load_index(self, persist_dir: str, **kwargs):
+    def _load_index(self, **kwargs):
         if self._vector_store_type == "faiss":
             from llama_index.vector_stores.faiss import FaissVectorStore
-
-            if self._index_mode == "exact":
-                persist_dir = os.path.join(persist_dir, "faiss_exact")
-            else:
-                persist_dir = os.path.join(persist_dir, "faiss_approx")
-
-            # faiss_index = faiss.read_index(persist_dir)
-            # self._vector_store = FaissVectorStore(faiss_index=faiss_index)
-            self._vector_store = FaissVectorStore.from_persist_dir(persist_dir)
+            self._vector_store = FaissVectorStore.from_persist_dir(self._persist_dir)
 
         elif self._vector_store_type == "chroma":
             import chromadb
             from llama_index.vector_stores.chroma import ChromaVectorStore
-
-            db = chromadb.PersistentClient(path=persist_dir)
+            # db = chromadb.PersistentClient(path=persist_dir)
+            db = chromadb.PersistentClient(path=self._persist_dir)
             chroma_collection = db.get_or_create_collection(self._collection_name)
             self._vector_store = ChromaVectorStore(
                 chroma_collection=chroma_collection,
@@ -224,21 +224,17 @@ class MultiVectorRetriever:
 
         elif self._vector_store_type == "milvus":
             from llama_index.vector_stores.milvus import MilvusVectorStore
-
-            self._vector_store = MilvusVectorStore(**kwargs)
+            self._vector_store = MilvusVectorStore(host=self._host, port=self._port, **kwargs)
 
         storage_context = StorageContext.from_defaults(
             vector_store=self._vector_store,
-            persist_dir=persist_dir,
+            # persist_dir=persist_dir,
+            persist_dir=self._persist_dir,
         )
 
         self._index = load_index_from_storage(storage_context)
-        # self._retriever = None
-        self._retriever = self._index.as_retriever(similarity_top_k=self._top_k)
+        self._retriever = None
 
-    # -----------------------------
-    # Load files
-    # -----------------------------
     async def load_files(self, reader) -> int:
         self._raw_docs = await asyncio.to_thread(reader.load_data)
         return len(self._raw_docs)
@@ -256,7 +252,6 @@ class MultiVectorRetriever:
         embed_dim = await asyncio.to_thread(self._detect_embedding_dim)
 
         self._vector_store = self._create_vector_store(embed_dim=embed_dim, **kwargs)
-
         storage_context = StorageContext.from_defaults(vector_store=self._vector_store)
 
         self._index = await asyncio.to_thread(VectorStoreIndex, nodes, storage_context=storage_context)
@@ -267,13 +262,26 @@ class MultiVectorRetriever:
     async def retrieve(self, query: str, filters: Optional[Dict] = None):
         final_filters = filters or self._metadata_filters
 
-        if self._retriever is None:
-            self._retriever = self._index.as_retriever(similarity_top_k=self._top_k)
+        llama_filters = None
+        is_faiss = self._vector_store_type == "faiss"
 
-        nodes: List[NodeWithScore] = await asyncio.to_thread(
-            self._retriever.retrieve,
-            query,
+        # 只有非 FAISS 的向量库（如 Chroma/Milvus），才使用 LlamaIndex 原生的预过滤
+        if final_filters and not is_faiss:
+            from llama_index.core.vector_stores.types import MetadataFilters, ExactMatchFilter
+            filter_list = [ExactMatchFilter(key=k, value=v) for k, v in final_filters.items()]
+            llama_filters = MetadataFilters(filters=filter_list)
+
+        # 动态决定 fetch_k，如果是 FAISS 并且有过滤条件，我们要放大检索量 (比如放大10倍或50倍)，防止过滤后结果为空
+        fetch_k = self._top_k
+        if is_faiss and final_filters:
+            fetch_k = self._top_k * 10  # 你可以根据数据量自行调节放大倍数
+
+        self._retriever = self._index.as_retriever(
+            similarity_top_k=fetch_k,
+            filters=llama_filters
         )
+
+        nodes: List[NodeWithScore] = await self._retriever.aretrieve(query)
 
         documents: list[Document] = []
         for node in nodes:
@@ -285,44 +293,43 @@ class MultiVectorRetriever:
                 )
             )
 
-        def match(meta):
-            return all(meta.get(k) == v for k, v in final_filters.items())
+        # 如果是 FAISS 且有过滤条件，则执行 Python 层的后置过滤 (Post-filtering)
+        if is_faiss and final_filters:
+            def match(meta):
+                return all(meta.get(k) == v for k, v in final_filters.items())
 
-        if final_filters:
-            results = [r for r in documents if match(r.metadata)]
-            return results
+            # 执行 Python 列表过滤
+            documents = [d for d in documents if match(d.metadata)]
+            # 截断，只保留最终需要的 top_k 个
+            documents = documents[:self._top_k]
 
         return documents
 
-    # -----------------------------
-    # Save
-    # -----------------------------
-    async def save(self, persist_dir: str):
-        os.makedirs(persist_dir, exist_ok=True)
+    async def save(self, persist_dir: Optional[str] = None):
+        target_dir = persist_dir or self._persist_dir
+        if not target_dir:
+            raise ValueError("No persist_dir provided to save index.")
+
+        os.makedirs(target_dir, exist_ok=True)
 
         if self._vector_store_type == "faiss":
-            if self._index_mode == "exact":
-                faiss_path = os.path.join(persist_dir, "faiss_exact")
-            else:
-                faiss_path = os.path.join(persist_dir, "faiss_approx")
-
+            faiss_path = os.path.join(target_dir, "default__vector_store.json")
             await asyncio.to_thread(self._vector_store.persist, persist_path=faiss_path)
+            # if self._index_mode == "exact":
+            #     faiss_path = os.path.join(persist_dir, "faiss_exact")
+            # else:
+            #     faiss_path = os.path.join(persist_dir, "faiss_approx")
+            # await asyncio.to_thread(self._vector_store.persist, persist_path=faiss_path)
 
-        await asyncio.to_thread(self._index.storage_context.persist, persist_dir=persist_dir)
+        await asyncio.to_thread(self._index.storage_context.persist, persist_dir=target_dir)
 
-    # -----------------------------
-    # Utils
-    # -----------------------------
+
     def _detect_embedding_dim(self):
         return len(self._embed_model.get_text_embedding(_PROBE_TEXT))
 
     @staticmethod
-    def index_exists(index_mode: str, persist_dir: str):
-        if index_mode == "exact":
-            faiss_path = os.path.join(persist_dir, "faiss_exact")
-        else:
-            faiss_path = os.path.join(persist_dir, "faiss_approx")
-        return os.path.exists(faiss_path)
+    def index_exists(persist_dir: str):
+        return os.path.exists(persist_dir)
 
 
 async def faiss_test():
@@ -339,101 +346,75 @@ async def faiss_test():
         base_url="http://127.0.0.1:19002/v1",
         api_key="sk-1234567890"
     )
-    persist_dir = "./storage/faiss"
+    persist_dir = "../../../data/knowledge_persist_dir/hotpotqa/faiss_exact_l2"
 
-    # 3️⃣ 判断 index 是否存在
-    if MultiVectorRetriever.index_exists(persist_dir):
-        print("✅ 检测到已有索引，直接加载...")
-        retriever = MultiVectorRetriever(
-            embed_model=embed_model,
-            vector_store_type="faiss",
-            persist_dir=persist_dir
-        )
-
-    else:
-        print("⚠️ 未检测到索引，开始构建...")
-
-        retriever = MultiVectorRetriever(
-            embed_model=embed_model,
-            vector_store_type="faiss"
-        )
-
-        # 4️⃣ 加载数据
-        num_docs = await retriever.load_files(reader)
-        print(f"Loaded {num_docs} documents")
-
-        # 5️⃣ 构建索引
-        await retriever.build_index(chunk_size=512, chunk_overlap=50)
-
-        # 6️⃣ 保存
-        await retriever.save(persist_dir)
-        print("✅ 索引构建完成并保存")
-
-    # 7️⃣ 检索（必须 await）
-    results = await retriever.retrieve(
-        "李雪峰是谁？",
-        filters={"file_name": "5.txt"}
+    print("--- Testing FAISS ---")
+    retriever = MultiVectorRetriever(
+        embed_model=embed_model,
+        vector_store_type="faiss",
+        persist_dir=persist_dir
     )
 
-    print("\n🔍 检索结果：\n")
+    if not retriever._index:
+        print("⚠️ 未检测到有效索引，开始构建...")
+        num_docs = await retriever.load_files(reader)
+        print(f"Loaded {num_docs} documents")
+        await retriever.build_index(chunk_size=512, chunk_overlap=50)
+        await retriever.save()
+        print("✅ 索引构建完成并保存")
+    else:
+        print("✅ 检测到已有索引，直接加载成功...")
+
+    results = await retriever.retrieve(
+        "what is one of the stars of  The Newcomers known for",
+        # filters={"file_name": "5.txt"}
+        filters={"title": "The Newcomers (film)"}
+    )
+
+    print("\n🔍 检索结果：")
     for r in results:
-        print(f"score: {r['score']:.4f}")
-        print(f"text: {r['text'][:100]}")
-        print(f"metadata: {r['metadata']}")
+        # ✅ 修复：对象属性访问
+        print(f"score: {r.score:.4f}")
+        print(f"text: {r.text[:100]}")
+        print(f"metadata: {r.metadata}")
         print("-" * 50)
 
 
 async def chroma_test():
     from llama_index.core import SimpleDirectoryReader
-    from flexrag.components.retrieval import OpenAILikeEmbedding
+    from llama_index.embeddings.openai import OpenAIEmbedding
+    embed_model = OpenAIEmbedding()
 
     persist_dir = "./storage/chroma"
+    reader = SimpleDirectoryReader(input_dir="../../../data/other")
 
-    reader = SimpleDirectoryReader(
-        input_dir="../../../data/other"
+    print("--- Testing Chroma ---")
+    # ✅ 修复：初始化时直接传入 persist_dir，不要事后赋值
+    retriever = MultiVectorRetriever(
+        embed_model=embed_model,
+        vector_store_type="chroma",
+        persist_dir=persist_dir,
+        collection_name="test_collection"
     )
 
-    embed_model = OpenAILikeEmbedding(
-        model_name="Qwen3-Embedding-0.6B",
-        base_url="http://127.0.0.1:19002/v1",
-        api_key="sk-1234567890"
-    )
-
-    # ⚠️ Chroma 不用 FAISS 文件判断，直接看目录
-    if os.path.exists(persist_dir):
-        print("✅ 加载 Chroma 索引")
-
-        retriever = MultiVectorRetriever(
-            embed_model=embed_model,
-            vector_store_type="chroma",
-            persist_dir=persist_dir,
-            collection_name="test_collection"  # ⭐ 关键
-        )
-    else:
+    if not retriever._index:
         print("⚠️ 构建 Chroma 索引")
-
-        retriever = MultiVectorRetriever(
-            embed_model=embed_model,
-            vector_store_type="chroma",
-            collection_name="test_collection"
-        )
-
         await retriever.load_files(reader)
-
-        retriever._persist_dir = persist_dir
         await retriever.build_index()
-
-        await retriever.save(persist_dir)
+        await retriever.save()
+    else:
+        print("✅ 加载 Chroma 索引成功")
 
     results = await retriever.retrieve(
         "李雪峰是谁？",
-        filters={"file_name": "5.txt"}  # ✅ Chroma 原生支持
+        filters={"file_name": "5.txt"}
     )
 
     print("\n🔍 Chroma结果：")
     for r in results:
-        print(r)
+        print(f"score: {r.score:.4f} | text: {r.text[:50]}...")
 
 
 if __name__ == '__main__':
-    asyncio.run(chroma_test())
+    asyncio.run(faiss_test())
+    # asyncio.run(chroma_test())

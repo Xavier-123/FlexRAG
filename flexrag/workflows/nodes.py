@@ -137,7 +137,7 @@ def make_post_retrieval_optimizer_node(
         logger.info("-------- post retrieval optimizer node --------")
         if state.get("error"):
             return {}
-        query: str = state.get("current_query") or state.get("original_query") or state["query"]
+        query: str = state.get("original_query") or state["query"]
         accumulated_context: list[str] = state.get("accumulated_context")
         raw_docs: list[dict] = state.get("retrieved_docs", [])
         documents = [Document(**d) for d in raw_docs]

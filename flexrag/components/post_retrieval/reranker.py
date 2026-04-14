@@ -29,7 +29,11 @@ class OpenAILikeReranker(BasePostRetrieval):
         self._model = model
         self._api_key = api_key
         self._top_k = top_k
-        self._client: httpx.AsyncClient = http_client or httpx.AsyncClient(timeout=60.0)
+
+        # ✅ 关键修复：区分“外部传入 vs 内部创建”
+        self._client = http_client or httpx.AsyncClient(timeout=60.0)
+        self._own_client = http_client is None
+        self._closed = False
 
     async def optimize(
             self,
@@ -40,6 +44,9 @@ class OpenAILikeReranker(BasePostRetrieval):
     ) -> list[Document]:
         if not documents:
             return []
+
+        if self._closed:
+            raise RuntimeError("Reranker client already closed")
 
         texts = [doc.text for doc in documents]
         payload: dict[str, Any] = {
@@ -77,3 +84,21 @@ class OpenAILikeReranker(BasePostRetrieval):
         selected = reranked[:self._top_k]
         logger.info("Reranked: kept %d / %d documents", len(selected), len(documents))
         return selected
+
+    # =========================
+    # ✅ 资源释放
+    # =========================
+    async def aclose(self):
+        if not self._closed:
+            if self._own_client:
+                await self._client.aclose()
+            self._closed = True
+
+   # =========================
+    # ✅ async with 支持
+    # =========================
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.aclose()
