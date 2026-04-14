@@ -2,387 +2,361 @@
 
 # 🤖 FlexRAG
 
-**一个具有强解耦性的 Agentic RAG 系统**
+**A Highly Decoupled Agentic RAG System | 强解耦 Agentic RAG 系统**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![LangGraph](https://img.shields.io/badge/LangGraph-≥0.2.0-orange)](https://github.com/langchain-ai/langgraph)
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-≥0.10.0-green)](https://www.llamaindex.ai/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
+
+[English](#english) | [中文](#chinese)
 
 </div>
 
 ---
 
-## 📖 项目简介
+<a name="english"></a>
 
-**FlexRAG** 是一个基于 **LangGraph** 和 **LlamaIndex** 构建的模块化、企业级**检索增强生成（RAG）**系统。
+## Overview
 
-传统 RAG 系统往往将检索、重排序、生成等各阶段紧耦合在一起，难以独立替换和扩展。FlexRAG 通过**策略模式**对每个阶段进行严格解耦，每个组件均有抽象基类约束，让你可以随意替换任一环节而不影响其他模块。
+**FlexRAG** is a modular, production-oriented **Retrieval-Augmented Generation (RAG)** framework built on top of [LangGraph](https://github.com/langchain-ai/langgraph) and [LlamaIndex](https://www.llamaindex.ai/). Its defining characteristic is **strong decoupling**: every pipeline stage is governed by an abstract base class (ABC), allowing you to swap any component—retriever, reranker, context optimizer, or generator—without touching the rest of the system.
 
-系统内置完整的**知识库构建流水线**——从本地文件加载、分块、使用 vLLM 模型向量化，到持久化 FAISS 索引到磁盘。下次启动时自动恢复索引，让文档随时可查。FlexRAG 还提供了 **Gradio Web UI**，支持多知识库动态切换，以及完整的**评估模块**，涵盖 EM、F1 和 Recall@k 等指标。
-
----
-
-## ✨ 核心特性
-
-- 🔌 **强解耦策略模式**：Pre-Retrieval、Retrieval、Post-Retrieval、Reasoning 四大阶段均有 ABC 抽象基类约束，各组件独立可替换，修改任意一环节无需触及其他模块。
-
-- 🔄 **Agentic 迭代检索循环**：LangGraph `StateGraph` 驱动五节点有向图（PreQueryOptimizer → Retrieve → PostRetrieval → ContextEvaluator → Generate），`ContextEvaluator` 判断上下文是否充分，不足时自动优化查询并循环重查，最多执行 `MAX_ITERATIONS` 轮。
-
-- 🗄️ **多策略混合检索**：内置 `FAISSRetriever`（密集向量）、`BM25Retriever`（稀疏关键词）、`GraphRetriever`（知识图谱）三种检索器，并通过 `HybridRetriever` 融合结果，消除单一召回策略的盲区。
-
-- 📚 **完整知识库构建流水线**：`FAISSRetriever` 支持 `.txt` / `.md` / `.pdf` 文件批量加载、分块、调用 vLLM 嵌入端点向量化，并持久化 FAISS 索引；可选同步构建 BM25 稀疏索引和 Neo4j / 本地知识图谱索引。
-
-- 🖥️ **Gradio Web UI + 多知识库秒切**：`web_UI.py` 提供开箱即用的聊天界面，支持 hotpotqa / 2wikimultihopqa / musique / nq 等多知识库下拉切换，首次加载后自动缓存，切换延迟接近零。
-
-- 📊 **离线批量评估工具链**：`scripts/batch_run.py` 以 `asyncio.Semaphore` 控制并发批量推理，输出标准 JSON；`scripts/eval_rag.py` 一键计算 Exact Match、Char-F1 和 Recall@k 等指标。
+The framework ships with a complete, end-to-end workflow:
+- **Knowledge-base construction** (document ingestion → chunking → embedding → FAISS / BM25 / knowledge-graph indexing)
+- **Agentic iterative retrieval** via a LangGraph `StateGraph` that re-queries until context is sufficient
+- **Gradio Web UI** with multi-knowledge-base switching
+- **Offline batch evaluation** (Exact Match, Char-F1, Recall@k)
 
 ---
 
-## 🛠️ 技术栈
+## Table of Contents
 
-| 类别 | 技术 / 库 | 说明 |
+- [Architecture](#architecture)
+- [Core Features](#core-features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Quick Start](#quick-start)
+- [Scripts](#scripts)
+- [Extending FlexRAG](#extending-flexrag)
+- [Running Tests](#running-tests)
+- [Environment Variables Reference](#environment-variables-reference)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Architecture
+
+FlexRAG assembles a five-node directed graph compiled by LangGraph:
+
+```
+User Query
+    │
+    ▼
+┌─────────────────────┐
+│  PreQueryOptimizer  │  Query rewriting / expansion / task splitting
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│      Retrieve       │  Dense (FAISS) + Sparse (BM25) + Graph retrieval
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│  PostRetrieval      │  Cross-encoder reranking + LLM context pruning
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐
+│  ContextEvaluator   │  LLM judge: is context sufficient?
+└────┬────────────────┘
+     │                  ╔══ NO (iteration < MAX_ITERATIONS) ══╗
+     │                  ║                                     ║
+     │ YES              ╚═════════════════════════════════════╝
+     ▼                                (loop back to PreQueryOptimizer)
+┌─────────────────────┐
+│      Generate       │  Structured JSON output (answer + evidence)
+└─────────────────────┘
+```
+
+Each node communicates through a shared `_GraphState` TypedDict. The `ContextEvaluator` node drives the agentic loop: when it finds the context insufficient and the iteration budget is not exhausted, it routes back to `PreQueryOptimizer` with a `missing_info` hint, triggering a refined retrieval cycle.
+
+---
+
+## Core Features
+
+| Feature | Description |
+|---|---|
+| 🔌 **Strategy-pattern decoupling** | Every stage (pre-retrieval, retrieval, post-retrieval, reasoning) has an ABC. Swap any component without touching the orchestrator. |
+| 🔄 **Agentic iterative loop** | LangGraph `StateGraph` with conditional routing. Retrieves again when context is insufficient, up to `MAX_ITERATIONS` rounds. |
+| 🗄️ **Hybrid retrieval** | Dense (FAISS / Chroma / Milvus via LlamaIndex), Sparse (BM25 + jieba Chinese tokenizer), and Graph (LlamaIndex `PropertyGraphIndex`) — fused by `HybridRetriever`. |
+| 📚 **Full KB build pipeline** | CLI script builds dense (FAISS exact & approximate, Milvus), sparse (BM25), and graph indexes from `.txt` / `.md` / `.pdf` / `.json` files. |
+| 🖥️ **Gradio Web UI** | Multi-knowledge-base dropdown, live node-level streaming via `astream_events`, and per-node execution trace panel. |
+| 📊 **Offline evaluation** | `batch_run.py` for async concurrent inference; `eval_rag.py` for EM, Char-F1, Recall@k metrics. |
+| 🧾 **Checkpoint persistence** | Optional SQLite-backed LangGraph checkpoints for full per-run replay and audit. |
+
+---
+
+## Tech Stack
+
+| Category | Library | Role |
 |---|---|---|
-| **图编排** | [LangGraph](https://github.com/langchain-ai/langgraph) ≥ 0.2.0 | Agentic 状态机编排，含条件路由与可选 SQLite 检查点 |
-| **LLM 调用** | [langchain-openai](https://pypi.org/project/langchain-openai/) ≥ 0.1.0 | OpenAI 兼容 API（支持 vLLM、ModelScope 等本地/云端端点） |
-| **检索框架** | [LlamaIndex](https://www.llamaindex.ai/) ≥ 0.10.0 | `SimpleDirectoryReader`、`SentenceSplitter`、`VectorStoreIndex` |
-| **稀疏检索** | [rank-bm25](https://pypi.org/project/rank-bm25/) + llama-index-retrievers-bm25 | BM25Okapi + 自定义中文分词（jieba） |
-| **向量存储** | [FAISS](https://github.com/facebookresearch/faiss) ≥ 1.7.0 | 通过 `llama-index-vector-stores-faiss` 集成 |
-| **数据校验** | [Pydantic v2](https://docs.pydantic.dev/) + pydantic-settings | 结构化输出（`RAGOutput`、`Document`）及配置管理 |
-| **HTTP 客户端** | [httpx](https://www.python-httpx.org/) ≥ 0.27.0 | 异步调用 vLLM 重排序远程接口 |
-| **Web UI** | [Gradio](https://www.gradio.app/) | 多知识库聊天界面，原生支持 async |
-| **PDF 解析** | [pypdf](https://pypi.org/project/pypdf/) ≥ 3.0.0 | 从 PDF 文件中提取文本 |
-| **配置加载** | [python-dotenv](https://pypi.org/project/python-dotenv/) ≥ 1.0.0 | 从 `.env` 文件自动读取环境变量 |
+| Graph orchestration | [LangGraph](https://github.com/langchain-ai/langgraph) ≥ 0.2.0 | Agentic state machine, conditional routing, SQLite checkpoints |
+| LLM calls | [langchain-openai](https://pypi.org/project/langchain-openai/) | OpenAI-compatible endpoints (vLLM, ModelScope, OpenAI, etc.) |
+| Retrieval framework | [LlamaIndex](https://www.llamaindex.ai/) ≥ 0.10.0 | Document ingestion, chunking, vector/graph indexes |
+| Sparse retrieval | llama-index-retrievers-bm25 + jieba | BM25Okapi with Chinese tokenization support |
+| Vector store | [FAISS](https://github.com/facebookresearch/faiss) via llama-index-vector-stores-faiss | Exact (IndexFlatL2) and approximate (HNSWFlat) indexes |
+| Data validation | [Pydantic v2](https://docs.pydantic.dev/) + pydantic-settings | Schema models and env-based config |
+| Async HTTP | [httpx](https://www.python-httpx.org/) | Async calls to vLLM reranker / embedding endpoints |
+| Web UI | [Gradio](https://www.gradio.app/) | Chat interface with streaming support |
+| PDF parsing | pypdf | Text extraction from PDF files |
 
 ---
 
-## 📁 项目结构
+## Project Structure
 
 ```
 FlexRAG/
-├── main.py                              # 🚀 命令行交互式问答入口（自动检测/构建知识库）
-├── web_UI.py                            # 🖥️  Gradio Web UI（多知识库动态切换，端口 7860）
-├── requirements.txt                     # 📦 Python 依赖清单
+├── main.py                              # CLI interactive Q&A entry point
+├── web_UI.py                            # Gradio Web UI (port 7860)
+├── requirements.txt                     # Python dependencies
+├── .env.example                         # Template for environment variables
 ├── scripts/
-│   ├── build_knowledge_base.py          # 🔨 独立知识库构建脚本（CLI，支持稀疏/图索引）
-│   ├── batch_run.py                     # ⚡ 异步批量 QA 推理脚本（并发 Semaphore 控制）
-│   └── eval_rag.py                      # 📊 RAG 离线评估脚本（EM / F1 / Recall@k）
-└── flexrag/                             # 核心库
-    ├── __init__.py                      # 包入口（导出 RAGPipeline、RAGOutput、RAGState）
+│   ├── build_knowledge_base.py          # Knowledge-base build CLI (dense/sparse/graph)
+│   ├── batch_run.py                     # Async batch inference with concurrency control
+│   └── eval_rag.py                      # Offline evaluation (EM / F1 / Recall@k)
+└── flexrag/
+    ├── __init__.py                      # Public exports: RAGPipeline, RAGOutput, RAGState
     ├── common/
-    │   ├── config.py                    # Pydantic Settings（读取 .env / 环境变量）
-    │   ├── schema.py                    # 数据模型：Document、RAGState、RAGOutput、ContextEvaluation
-    │   ├── logging.py                   # 全局日志配置
-    │   └── exceptions.py                # 自定义异常
+    │   ├── config.py                    # Pydantic Settings (reads .env / env vars)
+    │   ├── schema.py                    # Data models: Document, RAGState, RAGOutput
+    │   ├── logging.py                   # Global logging setup
+    │   └── exceptions.py               # Custom exception hierarchy
     ├── components/
-    │   ├── pre_retrieval/               # 检索前优化（策略可插拔）
-    │   │   ├── query_rewriter.py        # LLM 查询改写
-    │   │   ├── query_expander.py        # LLM 多查询扩展
-    │   │   ├── task_splitter.py         # 复杂问题拆解为子任务
-    │   │   └── terminology_enricher.py  # 专业术语增强
-    │   ├── retrieval/                   # 检索器（策略可插拔）
-    │   │   ├── multi_vector_retriever.py  # 密集向量检索（FAISS / Chroma + LlamaIndex）
-    │   │   ├── bm25_retriever.py        # 稀疏 BM25 检索
-    │   │   ├── graph_retriever.py       # 本地知识图谱检索
-    │   │   └── retrieval_opt.py         # HybridRetriever（多路融合）
-    │   ├── post_retrieval/              # 检索后优化（策略可插拔）
-    │   │   ├── reranker.py              # OpenAI-Like cross-encoder 重排序
-    │   │   └── context_optimizer.py     # LLM 上下文裁剪优化
-    │   ├── reasoning/                   # 推理组件（策略可插拔）
-    │   │   ├── context_evaluator.py     # LLM 上下文充分性评估（Agentic 裁判）
-    │   │   └── generator.py             # OpenAI 结构化输出生成器
-    │   └── evaluate/                    # 评估指标
-    │       └── metrics/                 # EM / Char-F1 / Recall@k
+    │   ├── pre_retrieval/               # Pre-retrieval query optimizers (pluggable)
+    │   │   ├── query_rewriter.py        # LLM-based query rewriting
+    │   │   ├── query_expander.py        # HyDE-style query expansion
+    │   │   ├── task_splitter.py         # Complex question decomposition
+    │   │   └── terminology_enricher.py  # Domain terminology enrichment
+    │   ├── retrieval/                   # Retrievers (pluggable)
+    │   │   ├── multi_vector_retriever.py # Dense vector retrieval (FAISS/Chroma/Milvus)
+    │   │   ├── bm25_retriever.py        # Sparse BM25 retrieval
+    │   │   ├── graph_retriever.py       # Knowledge-graph retrieval
+    │   │   └── retrieval_opt.py         # HybridRetriever (multi-source fusion)
+    │   ├── post_retrieval/              # Post-retrieval processors (pluggable)
+    │   │   ├── reranker.py              # OpenAI-compatible cross-encoder reranker
+    │   │   └── context_optimizer.py     # LLM-based context pruning and extraction
+    │   ├── reasoning/                   # Reasoning components (pluggable)
+    │   │   ├── context_evaluator.py     # LLM judge for Agentic loop routing
+    │   │   └── generator.py             # Structured JSON answer generator
+    │   └── evaluate/
+    │       └── metrics/                 # EM / Char-F1 / Recall@k implementations
     └── workflows/
-        ├── pipeline.py                  # RAGPipeline 高层编排器（arun / run）
-        ├── builder.py                   # LangGraph StateGraph 组装与编译
-        └── nodes.py                     # 节点工厂（pre_retrieval / retrieve / post_retrieval / eval / generate）
+        ├── pipeline.py                  # RAGPipeline: high-level orchestrator (arun/run/astream_run)
+        ├── builder.py                   # LangGraph StateGraph assembly and compilation
+        └── nodes.py                     # Node factory functions
 ```
 
 ---
 
-## 🚀 快速开始
+## Installation
 
-### 环境要求
+### Prerequisites
 
-| 要求 | 版本 |
+| Requirement | Version |
 |---|---|
 | Python | ≥ 3.10 |
-| 嵌入模型服务 | 任意 OpenAI 兼容嵌入端点（如 vLLM、ModelScope） |
-| 重排序模型服务 | 任意 OpenAI 兼容 cross-encoder 端点（可选） |
-| 对话大模型服务 | 任意 OpenAI 兼容聊天端点 |
+| LLM serving endpoint | Any OpenAI-compatible chat endpoint (vLLM, ModelScope, OpenAI, etc.) |
+| Embedding endpoint | Any OpenAI-compatible embedding endpoint |
+| Reranker endpoint | Any OpenAI-compatible cross-encoder endpoint (optional) |
 
-### 安装步骤
-
-**1. 克隆仓库**
+### Steps
 
 ```bash
+# 1. Clone the repository
 git clone https://github.com/Xavier-123/FlexRAG.git
 cd FlexRAG
-```
 
-**2. 安装依赖**
-
-```bash
+# 2. Install dependencies
 pip install -r requirements.txt
 ```
 
-> 💡 `faiss-cpu` 为默认 CPU 版本。若需 GPU 加速，请将 `requirements.txt` 中的
-> `faiss-cpu` 替换为 `faiss-gpu` 后再执行上述命令。
+> **GPU acceleration:** Replace `faiss-cpu` with `faiss-gpu` in `requirements.txt` before installing.
 
-### 配置说明
+---
 
-在项目根目录创建 `.env` 文件（所有配置均有内置默认值，可按需覆盖）：
+## Configuration
 
-```dotenv
-# ============================================================
-# LLM（对话模型）
-# ============================================================
-LLM_BASE_URL=http://localhost:8000/v1
-LLM_API_KEY=sk-your-key
-LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+Copy the template and fill in your values:
 
-# ============================================================
-# Embedding（嵌入模型）
-# ============================================================
-EMBEDDING_BASE_URL=http://localhost:8001/v1
-EMBEDDING_API_KEY=sk-your-key
-EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
-
-# ============================================================
-# Reranker（重排序模型）
-# ============================================================
-RERANKER_BASE_URL=http://localhost:8002/v1
-RERANKER_API_KEY=sk-your-key
-RERANKER_MODEL=BAAI/bge-reranker-v2-m3
-
-# ============================================================
-# 知识库（以下均为可选项，括号内为内置默认值）
-# ============================================================
-KNOWLEDGE_PERSIST_DIR=./data/knowledge_persist_dir   # (./data/knowledge_persist_dir)
-KNOWLEDGE_CHUNK_SIZE=512                             # (512)
-KNOWLEDGE_CHUNK_OVERLAP=50                           # (50)
-
-# ============================================================
-# Pipeline 超参数（可选）
-# ============================================================
-TOP_K_RETRIEVAL=10      # 重排序前初次检索文档数 (10)
-TOP_K_RERANK=5          # 重排序后保留文档数 (5)
-CONTEXT_MAX_TOKENS=3000 # 传给生成器的上下文 token 预算 (3000)
-MAX_ITERATIONS=3        # Agentic 迭代重查最大轮数 (3)
-
-# ============================================================
-# 可选高级配置
-# ============================================================
-CHECKPOINT_DB_PATH=./data/checkpoints.db   # 启用 LangGraph SQLite 检查点（不设则禁用）
-DRAW_IMAGE_PATH=./langgraph.png            # 保存架构图（不设则不生成）
-LOG_LEVEL=INFO                             # 日志级别 (INFO)
+```bash
+cp .env.example .env   # or create .env manually
 ```
 
-### 运行项目
+**Never commit `.env` to version control.** All fields have built-in defaults; override only what you need.
 
-**方式一：命令行交互式问答**
+```dotenv
+# ── LLM ──────────────────────────────────────────────────────────────────────
+LLM_BASE_URL=http://localhost:8000/v1
+LLM_API_KEY=your-llm-key
+LLM_MODEL=Qwen/Qwen2.5-7B-Instruct
+
+# ── Embedding ─────────────────────────────────────────────────────────────────
+EMBEDDING_BASE_URL=http://localhost:8001/v1
+EMBEDDING_API_KEY=your-embedding-key
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+
+# ── Reranker (optional) ───────────────────────────────────────────────────────
+RERANKER_BASE_URL=http://localhost:8002/v1
+RERANKER_API_KEY=your-reranker-key
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+
+# ── Knowledge Base ────────────────────────────────────────────────────────────
+KNOWLEDGE_PERSIST_DIR=./data/knowledge_persist_dir
+KNOWLEDGE_CHUNK_SIZE=512
+KNOWLEDGE_CHUNK_OVERLAP=50
+
+# ── Pipeline hyperparameters ──────────────────────────────────────────────────
+TOP_K_RETRIEVAL=10          # documents retrieved before reranking
+TOP_K_RERANK=5              # documents kept after reranking
+CONTEXT_MAX_TOKENS=8000     # token budget passed to the generator
+MAX_ITERATIONS=3            # max agentic re-retrieval iterations
+
+# ── Optional features ─────────────────────────────────────────────────────────
+# CHECKPOINT_DB_PATH=./data/checkpoints.db    # SQLite checkpoint store
+# DRAW_IMAGE_PATH=./architecture.png          # save LangGraph diagram
+LOG_LEVEL=INFO
+```
+
+---
+
+## Quick Start
+
+### Option A — CLI interactive Q&A
 
 ```bash
 python main.py
 ```
 
-首次运行时会提示选择模式：
+On first run you will be prompted to build a knowledge base or use the built-in demo data. Subsequent runs auto-load the persisted index.
 
-```
-[INFO] No knowledge base found at './data/knowledge_persist_dir'.
-
-Choose an option:
-  b  -- Build from a local directory of documents
-  d  -- Use built-in demo data (no files needed)
-  q  -- Quit
-
-Option [b/d/q]:
-```
-
-- 输入 **`b`** → 指定文档目录，自动完成分块、向量化、保存索引
-- 输入 **`d`** → 使用内置 5 段演示文本，无需任何外部文件，直接体验完整流程
-
-再次运行时自动加载已保存的索引，无需重新构建。
-
-**方式二：Gradio Web UI**
-
-```bash
-# 第一步：构建知识库（以 hotpotqa 为例）
-python scripts/build_knowledge_base.py \
-    --input-dir ./data/knowledge_files_dir/hotpotqa/ \
-    --output-dir ./data/knowledge_persist_dir/hotpotqa/ \
-    --chunk-size 1024 \
-    --chunk-overlap 50 \
-    --embedding-base-url http://localhost:8001/v1 \
-    --embedding-api-key sk-your-key \
-    --embedding-model BAAI/bge-large-en-v1.5 \
-    --force
-
-# 第二步：启动 Web UI
-python web_UI.py
-```
-
-启动后访问 `http://localhost:7860`，通过下拉框在多个知识库间无缝切换。
-
----
-
-## 💡 使用指南
-
-### 示例一：Python API 快速问答
+### Option B — Python API
 
 ```python
 import asyncio
 from flexrag import RAGPipeline
-from flexrag.common import Settings
 
 async def main():
-    # 读取 .env / 环境变量，自动加载已持久化的 FAISS 知识库
+    # Reads .env / environment variables automatically
     pipeline = RAGPipeline.from_settings()
 
-    output = await pipeline.arun("什么是检索增强生成（RAG）？")
-
-    print("Answer :", output.answer)
-    print("Evidence:")
-    for i, snippet in enumerate(output.evidence, 1):
-        print(f"  [{i}] {snippet[:120]}...")
+    result = await pipeline.arun("What is Retrieval-Augmented Generation?")
+    print("Answer :", result.answer)
+    for i, snippet in enumerate(result.evidence, 1):
+        print(f"  [{i}] {snippet[:120]}")
 
 asyncio.run(main())
 ```
 
-> 在同步环境中可使用 `pipeline.run(query)`（内部调用 `asyncio.run()`），
-> **不能**在已有事件循环中使用。
+> In a synchronous context use `pipeline.run(query)`, which wraps `asyncio.run()` internally. **Do not** call it from within a running event loop.
 
----
+### Option C — Gradio Web UI
 
-### 示例二：手动组装 Pipeline（自定义各阶段组件）
+```bash
+# Step 1: build the knowledge base
+python scripts/build_knowledge_base.py \
+    --input-dir ./data/docs/ \
+    --output-dir ./data/knowledge_persist_dir/default/ \
+    --chunk-size 512 --chunk-overlap 50 \
+    --embedding-base-url http://localhost:8001/v1 \
+    --embedding-model BAAI/bge-large-en-v1.5 \
+    --enable-sparse          # also build BM25 index
+
+# Step 2: launch the UI
+python web_UI.py
+# → http://localhost:7860
+```
+
+### Option D — Streaming (server-sent events style)
 
 ```python
 import asyncio
-from langchain_openai import ChatOpenAI
 from flexrag import RAGPipeline
-from flexrag.common import Settings
-from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander
-from flexrag.components.retrieval import HybridRetriever, MultiVectorRetriever, BM25Retriever, OpenAILikeEmbedding
-from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
-from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 
 async def main():
-    settings = Settings()
-
-    llm = ChatOpenAI(
-        model=settings.llm_model,
-        api_key=settings.llm_api_key,
-        base_url=settings.llm_base_url,
-        temperature=0.0,
-    )
-
-    embed_model = OpenAILikeEmbedding(
-        model_name=settings.embedding_model,
-        base_url=settings.embedding_base_url,
-        api_key=settings.embedding_api_key,
-    )
-
-    # --- 检索前优化：查询改写 + 多查询扩展 ---
-    pre_opt = PreQueryOptimizer([
-        QueryRewriter(llm=llm),
-        QueryExpander(llm=llm),
-    ])
-
-    # --- 混合检索：MultiVector 密集 + BM25 稀疏 ---
-    retriever = HybridRetriever(retrievers=[
-        MultiVectorRetriever(
-            embed_model=embed_model,
-            vector_store_type=settings.vector_store_type,
-            index=None,
-            top_k=5,
-            persist_dir=settings.knowledge_persist_dir,
-        ),
-        BM25Retriever(
-            top_k=5,
-            persist_dir=f"{settings.knowledge_persist_dir}/bm25_index",
-        ),
-    ])
-
-    # --- 检索后优化：重排序 + LLM 上下文裁剪 ---
-    post_opt = PostRetrieval([
-        OpenAILikeReranker(
-            base_url=settings.reranker_base_url,
-            model=settings.reranker_model,
-            api_key=settings.reranker_api_key,
-            top_k=5,
-        ),
-        LLMContextOptimizer(llm=llm),
-    ])
-
-    pipeline = RAGPipeline(
-        pre_retrieval_optimizer=pre_opt,
-        retriever=retriever,
-        post_retrieval_optimizer=post_opt,
-        context_evaluator=LLMContextEvaluator(llm=llm),
-        generator=OpenAIGenerator(
-            model=settings.llm_model,
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-        ),
-        settings=settings,
-    )
-
-    output = await pipeline.arun("LangGraph 与 LangChain 有什么区别？")
-    print(output.answer)
+    pipeline = RAGPipeline.from_settings()
+    async for event in pipeline.astream_run("What is RAG?"):
+        if event["type"] == "node_start":
+            print(f"▶ {event['node']} started")
+        elif event["type"] == "node_end":
+            print(f"✔ {event['node']} finished")
+        elif event["type"] == "result":
+            print("Answer:", event["answer"])
+        elif event["type"] == "error":
+            print("Error:", event["message"])
 
 asyncio.run(main())
 ```
 
 ---
 
-## 🔧 脚本工具
+## Scripts
 
-### 知识库构建（`scripts/build_knowledge_base.py`）
+### Build knowledge base — `scripts/build_knowledge_base.py`
 
 ```bash
-# 从目录构建（.txt / .md / .pdf）
-python scripts/build_knowledge_base.py --input-dir ./my_docs
+# Minimal: build dense FAISS index from a directory
+python scripts/build_knowledge_base.py \
+    --input-dir ./my_docs \
+    --output-dir ./data/index \
+    --embedding-base-url http://localhost:8001/v1 \
+    --embedding-model BAAI/bge-large-en-v1.5 \
+    --enable-dense
 
-# 同时构建稀疏 BM25 索引
-python scripts/build_knowledge_base.py --input-dir ./my_docs --enable-sparse
+# Also build a BM25 sparse index
+python scripts/build_knowledge_base.py \
+    --input-dir ./my_docs --output-dir ./data/index \
+    --enable-dense --enable-sparse
 
-# 同时构建本地知识图谱索引
-python scripts/build_knowledge_base.py --input-dir ./my_docs --enable-graph \
-    --llm-model Qwen/Qwen2.5-7B-Instruct \
+# Also build a local knowledge-graph index (requires LLM)
+python scripts/build_knowledge_base.py \
+    --input-dir ./my_docs --output-dir ./data/index \
+    --enable-dense --enable-sparse --enable-graph \
     --llm-base-url http://localhost:8000/v1 \
-    --llm-api-key sk-your-key
+    --llm-model Qwen/Qwen2.5-7B-Instruct
 
-# 自定义输出目录、分块大小，强制覆盖已有索引
+# Overwrite an existing index
 python scripts/build_knowledge_base.py --input-dir ./my_docs \
-    --output-dir ./my_index --chunk-size 256 --chunk-overlap 32 --force
+    --output-dir ./data/index --force
 ```
 
-### 异步批量推理（`scripts/batch_run.py`）
+### Async batch inference — `scripts/batch_run.py`
 
 ```bash
 python scripts/batch_run.py \
     --embedding-base-url http://localhost:8001/v1 \
     --embedding-model BAAI/bge-large-en-v1.5 \
-    --reranker-base-url http://localhost:8002/v1 \
-    --reranker-model BAAI/bge-reranker-v2-m3 \
     --llm-base-url http://localhost:8000/v1 \
     --llm-model Qwen/Qwen2.5-7B-Instruct \
-    --knowledge-persist-dir ./data/knowledge_persist_dir \
-    --input-file ./qa_data.json \
-    --output-file ./eval_results.json \
+    --knowledge-persist-dir ./data/knowledge_persist_dir/hotpotqa \
+    --input-file ./data/hotpotqa-100.json \
+    --output-file ./eval_results/hotpotqa.json \
     --max-concurrent-tasks 5 \
     --max-iterations 3
 ```
 
-### 评估（`scripts/eval_rag.py`）
+Input JSON format: `[{"question": "...", "answer": "..."}, ...]`
+
+### Offline evaluation — `scripts/eval_rag.py`
 
 ```bash
-python scripts/eval_rag.py --input eval_results.json --k_list 1,5,10,20
+python scripts/eval_rag.py --input ./eval_results/hotpotqa.json --k_list 1,5,10,20
 ```
 
-输出示例：
+Sample output:
 
 ```
 overall scores:
@@ -393,64 +367,184 @@ overall scores:
 
 ---
 
-## 🧩 扩展 FlexRAG
+## Extending FlexRAG
 
-每个阶段均有抽象基类（位于各 `components/*/base.py`）。替换组件只需：
+Each stage has an abstract base class in `flexrag/components/*/base.py`. To add a new component:
 
-1. 继承对应的抽象基类
-2. 实现所需的 `async def` 抽象方法
-3. 将实例传入 `RAGPipeline(...)`
+1. Subclass the appropriate ABC.
+2. Implement the required `async def` methods.
+3. Pass the instance into `RAGPipeline(...)` or `PostRetrieval([...])`.
 
-**示例：自定义检索后处理器**
+**Example: custom post-retrieval processor**
 
 ```python
 from flexrag.components.post_retrieval.base import BasePostRetrieval
 from flexrag.common.schema import Document
 
-class MySimpleRanker(BasePostRetrieval):
-    async def optimize(self, query, documents, accumulated_context, max_tokens):
-        # 按文本长度降序排列后返回前 5 条
-        ranked = sorted(documents, key=lambda d: len(d.text), reverse=True)[:5]
-        return "\n\n".join(d.text for d in ranked), ""
+class KeywordFilter(BasePostRetrieval):
+    """Keep only documents that contain at least one keyword from the query."""
+
+    async def optimize(
+        self,
+        query: str,
+        documents: list[Document],
+        accumulated_context: list[str],
+        max_tokens: int,
+    ) -> tuple[str, str]:
+        keywords = set(query.lower().split())
+        filtered = [d for d in documents if keywords & set(d.text.lower().split())]
+        context = "\n\n".join(d.text for d in filtered or documents)
+        return context, ""
+```
+
+**Example: custom retriever**
+
+```python
+from flexrag.components.retrieval.base import BaseFlexRetriever
+from flexrag.common.schema import Document
+
+class ElasticRetriever(BaseFlexRetriever):
+    def __init__(self, es_client, index: str, top_k: int = 10):
+        self._es = es_client
+        self._index = index
+        self._top_k = top_k
+
+    async def retrieve(self, query: str) -> list[Document]:
+        import asyncio
+        hits = await asyncio.to_thread(
+            self._es.search,
+            index=self._index,
+            body={"query": {"match": {"text": query}}, "size": self._top_k},
+        )
+        return [
+            Document(text=h["_source"]["text"], score=h["_score"])
+            for h in hits["hits"]["hits"]
+        ]
 ```
 
 ---
 
-## 🧪 运行测试
+## Running Tests
 
 ```bash
 pip install pytest pytest-asyncio
 python -m pytest tests/ -v
 ```
 
-所有测试均通过 `unittest.mock` 在完全离线环境中运行，无需任何外部服务。
+All tests run fully offline using `unittest.mock` — no external services required.
 
 ---
 
-## 📋 环境变量速查
+## Environment Variables Reference
 
-下表列出 `flexrag/common/config.py` 中的**内置默认值**，可通过 `.env` 文件或 Shell 环境变量覆盖任意项。
+All variables are read from `.env` (via pydantic-settings). Shell environment variables take precedence.
 
-> 💡 LLM、Embedding、Reranker 三者默认均指向同一端口 `8018`，这意味着你可以用一个 vLLM 实例同时托管多个模型。若使用不同主机/端口，在 `.env` 中分别配置对应的 `*_BASE_URL` 即可。
-
-| 变量名 | 默认值 | 说明 |
+| Variable | Default | Description |
 |---|---|---|
-| `LLM_BASE_URL` | `http://localhost:8018/v1` | LLM 服务端点 |
-| `LLM_API_KEY` | `sk-xxxx` | LLM API 密钥 |
-| `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | 对话模型名称 |
-| `EMBEDDING_BASE_URL` | `http://localhost:8018/v1` | 嵌入模型服务端点 |
-| `EMBEDDING_API_KEY` | `sk-xxxx` | 嵌入模型 API 密钥 |
-| `EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | 嵌入模型名称 |
-| `RERANKER_BASE_URL` | `http://localhost:8018/v1` | 重排序模型服务端点 |
-| `RERANKER_API_KEY` | `sk-xxxx` | 重排序模型 API 密钥 |
-| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | 重排序模型名称 |
-| `KNOWLEDGE_PERSIST_DIR` | `./data/knowledge_persist_dir` | FAISS 索引存储目录 |
-| `KNOWLEDGE_CHUNK_SIZE` | `512` | 每个文档块最大 token 数 |
-| `KNOWLEDGE_CHUNK_OVERLAP` | `50` | 相邻块间 token 重叠量 |
-| `TOP_K_RETRIEVAL` | `10` | 重排序前初次检索文档数 |
-| `TOP_K_RERANK` | `5` | 重排序后保留文档数 |
-| `CONTEXT_MAX_TOKENS` | `3000` | 传给生成器的上下文 token 预算 |
-| `MAX_ITERATIONS` | `3` | Agentic RAG 最大迭代重查轮数 |
-| `CHECKPOINT_DB_PATH` | `None`（禁用） | LangGraph SQLite 检查点路径 |
-| `DRAW_IMAGE_PATH` | `None`（不生成） | LangGraph 架构图保存路径 |
-| `LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARNING/ERROR/CRITICAL） |
+| `LLM_BASE_URL` | `http://localhost:8018/v1` | LLM serving endpoint |
+| `LLM_API_KEY` | `sk-xxxx` | LLM API key |
+| `LLM_MODEL` | `Qwen/Qwen2.5-7B-Instruct` | Chat model name |
+| `EMBEDDING_BASE_URL` | `http://localhost:8018/v1` | Embedding endpoint |
+| `EMBEDDING_API_KEY` | `sk-xxxx` | Embedding API key |
+| `EMBEDDING_MODEL` | `BAAI/bge-large-en-v1.5` | Embedding model name |
+| `RERANKER_BASE_URL` | `http://localhost:8018/v1` | Reranker endpoint |
+| `RERANKER_API_KEY` | `sk-xxxx` | Reranker API key |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Reranker model name |
+| `KNOWLEDGE_PERSIST_DIR` | `./data/knowledge_persist_dir` | FAISS index directory |
+| `KNOWLEDGE_CHUNK_SIZE` | `512` | Max tokens per chunk |
+| `KNOWLEDGE_CHUNK_OVERLAP` | `50` | Token overlap between chunks |
+| `TOP_K_RETRIEVAL` | `10` | Docs retrieved before reranking |
+| `TOP_K_RERANK` | `5` | Docs kept after reranking |
+| `CONTEXT_MAX_TOKENS` | `8000` | Generator context token budget |
+| `MAX_ITERATIONS` | `3` | Max agentic re-retrieval rounds |
+| `CHECKPOINT_DB_PATH` | `None` (disabled) | SQLite checkpoint path |
+| `DRAW_IMAGE_PATH` | `None` (disabled) | LangGraph diagram output path |
+| `LOG_LEVEL` | `INFO` | Logging level |
+| `MAX_CONCURRENT_TASKS` | `5` | Concurrency for batch_run.py |
+
+---
+
+<a name="chinese"></a>
+
+## 中文说明
+
+### 项目简介
+
+**FlexRAG** 是基于 **LangGraph** 和 **LlamaIndex** 构建的模块化企业级**检索增强生成（RAG）**系统。核心设计理念是**强解耦**——每个阶段通过抽象基类（ABC）约束，可独立替换检索器、重排序器、上下文优化器和生成器。
+
+### 工作流程
+
+系统由 LangGraph 编译的五节点有向图驱动：
+
+1. **PreQueryOptimizer（查询优化）** — 查询改写、多查询扩展、复杂问题分解
+2. **Retrieve（检索）** — 密集向量检索（FAISS/Chroma/Milvus）+ 稀疏 BM25 检索 + 知识图谱检索的混合融合
+3. **PostRetrieval（后处理）** — Cross-Encoder 重排序 + LLM 上下文精炼抽取
+4. **ContextEvaluator（上下文评估）** — LLM 判断上下文是否充分；不充分则携带 `missing_info` 提示重新触发检索循环
+5. **Generate（生成）** — 结构化 JSON 输出（包含 answer 和 evidence 字段）
+
+### 安全注意事项
+
+- **请勿**将 `.env` 文件、API 密钥或任何凭证提交到版本控制系统
+- 建议使用 `pre-commit` + `detect-secrets` 钩子防止意外泄漏
+- 生产环境应使用密钥管理服务（HashiCorp Vault、AWS Secrets Manager 等）替代 `.env` 文件
+
+### 快速上手（中文）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/Xavier-123/FlexRAG.git
+cd FlexRAG
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 创建配置文件
+cp .env.example .env
+# 编辑 .env，填入 LLM、Embedding、Reranker 的服务地址和 API Key
+
+# 4. 构建知识库（以本地文档目录为例）
+python scripts/build_knowledge_base.py \
+    --input-dir ./data/docs \
+    --output-dir ./data/knowledge_persist_dir/default \
+    --enable-dense --enable-sparse
+
+# 5. 启动命令行交互问答
+python main.py
+
+# 或启动 Web UI
+python web_UI.py   # 访问 http://localhost:7860
+```
+
+### 知识库文件格式
+
+支持 `.txt`、`.md`、`.pdf` 直接导入。若使用 JSON 格式，请遵循以下结构：
+
+```json
+[
+  {"idx": 0, "title": "文章标题", "text": "正文内容..."},
+  {"idx": 1, "title": "另一篇文章", "text": "正文内容..."}
+]
+```
+
+---
+
+## Contributing
+
+Contributions are welcome! Please open an issue to discuss your idea before submitting a pull request.
+
+1. Fork the repo and create a feature branch: `git checkout -b feat/my-feature`
+2. Make your changes with tests where applicable
+3. Run `python -m pytest tests/ -v` and ensure all tests pass
+4. Submit a pull request with a clear description of the change
+
+**Areas where contributions are especially welcome:**
+- Additional retriever backends (Milvus, Weaviate, Pinecone, Elasticsearch)
+- Additional pre-retrieval strategies
+- End-to-end integration tests
+- English documentation
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
