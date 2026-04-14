@@ -257,7 +257,7 @@ async def build(args: argparse.Namespace) -> None:
     chunk_overlap = args.chunk_overlap
 
     # ---- safety check ----
-    if (MultiVectorRetriever.index_exists("exact", output_dir) or MultiVectorRetriever.index_exists("approx", output_dir)) and not args.force:
+    if (MultiVectorRetriever.index_exists(output_dir) or MultiVectorRetriever.index_exists(output_dir)) and not args.force:
         print(
             f"[ERROR] An index already exists at '{output_dir}'.\n"
             "       Use --force to overwrite it.",

@@ -152,7 +152,10 @@ class MultiVectorRetriever:
         self._collection_name = collection_name
         self._host = host
         self._port = port
-        self._persist_dir = os.path.join(persist_dir, self._vector_store_type + "_" + dense_mode)
+        if persist_dir:
+            self._persist_dir = os.path.join(persist_dir, self._vector_store_type + "_" + dense_mode)
+        else:
+            self._persist_dir = None
         self._top_k = top_k
         self._metadata_filters = metadata_filters
 
@@ -160,9 +163,9 @@ class MultiVectorRetriever:
         self._vector_store = None
         self._retriever = None
 
-        if persist_dir:
-            if not os.path.exists(persist_dir):
-                raise FileNotFoundError(f"Persist directory not found: {persist_dir}")
+        if self._persist_dir:
+            if not os.path.exists(self._persist_dir):
+                raise FileNotFoundError(f"Persist directory not found: {self._persist_dir}")
             self._load_index(**kwargs)
 
     def _is_index_files_exist(self) -> bool:
