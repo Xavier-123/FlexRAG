@@ -9,7 +9,7 @@
 [![LlamaIndex](https://img.shields.io/badge/LlamaIndex-≥0.10.0-green)](https://www.llamaindex.ai/)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-[English](#english) | [中文](#chinese)
+[English](#english) | [中文](#zh)
 
 </div>
 
@@ -464,7 +464,7 @@ All variables are read from `.env` (via pydantic-settings). Shell environment va
 
 ---
 
-<a name="chinese"></a>
+<a name="zh"></a>
 
 ## 中文说明
 
@@ -485,7 +485,7 @@ All variables are read from `.env` (via pydantic-settings). Shell environment va
 ### 安全注意事项
 
 - **请勿**将 `.env` 文件、API 密钥或任何凭证提交到版本控制系统
-- 建议使用 `pre-commit` + `detect-secrets` 钩子防止意外泄漏
+- 建议使用 [`pre-commit`](https://pre-commit.com/) + [`detect-secrets`](https://github.com/Yelp/detect-secrets) 钩子防止意外泄漏（`pip install pre-commit detect-secrets && pre-commit install`）
 - 生产环境应使用密钥管理服务（HashiCorp Vault、AWS Secrets Manager 等）替代 `.env` 文件
 
 ### 快速上手（中文）
