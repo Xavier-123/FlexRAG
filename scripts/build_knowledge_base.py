@@ -56,11 +56,9 @@ def tokenize_text(text: str) -> list[str]:
 
 
 def build_dense_index(
-        builder,
+        nodes,
         embed_model,
         output_dir: str,
-        chunk_size: int = 512,
-        chunk_overlap: int = 50,
         vector_db: str = "faiss",  # "faiss" 或 "milvus"
         metric_type: str = "l2",  # "l2" (欧氏距离) 或 "cosine" (余弦相似度)
         milvus_uri: str = "./milvus_demo.db",  # 仅当 vector_db="milvus" 时生效(Milvus Lite本地文件)
@@ -77,10 +75,7 @@ def build_dense_index(
         raise ValueError("metric_type 必须是 'l2' 或 'cosine'")
 
     # 1. 统一文本切分
-    print(f"[INFO] Splitting documents (chunk_size={chunk_size}, chunk_overlap={chunk_overlap})...")
-    splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    nodes = splitter.get_nodes_from_documents(builder._raw_docs, show_progress=True)
-    print(f"[INFO] Splitted into {len(nodes)} nodes.")
+    print(f"[INFO] Received {len(nodes)} nodes for Dense Index.")
 
     # 2. 预计算 Embeddings (核心优化：避免重复调用API扣费)
     print("[INFO] Pre-computing embeddings...")
@@ -298,14 +293,20 @@ async def build(args: argparse.Namespace) -> None:
     elapsed_load = time.perf_counter() - t0
     print(f"[INFO] Loaded {doc_count} document(s) in {elapsed_load:.1f}s.")
 
+    # ================= 统一在此处切分 Nodes =================
+    print(f"[INFO] Splitting documents globally (chunk_size={chunk_size}, chunk_overlap={chunk_overlap})...")
+    splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    # 这里的 nodes 将具有全局唯一的 node_id
+    shared_nodes = splitter.get_nodes_from_documents(builder._raw_docs, show_progress=True)
+    print(f"[INFO] Globally splitted into {len(shared_nodes)} nodes.")
+    # =====================================================
+
     # ---- build dense index ----
     if args.enable_dense:
         build_dense_index(
-            builder=builder,
+            nodes=shared_nodes,
             embed_model=embed_model,
             output_dir=output_dir,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
             vector_db=args.vector_store_type,  # "faiss" 或 "milvus"
             metric_type=args.metric_type,  # "cosine" 或 "l2"
             milvus_uri=args.milvus_uri,
@@ -319,13 +320,10 @@ async def build(args: argparse.Namespace) -> None:
 
         try:
             from llama_index.retrievers.bm25 import BM25Retriever
-            # 将文档切分为 Nodes (节点)
-            # BM25Retriever 需要输入 Nodes
-            splitter = SentenceSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-            nodes = splitter.get_nodes_from_documents(builder._raw_docs)
-            # 初始化 BM25Retriever
+            # 注意：BM25Retriever 需要输入 Nodes
+            # 初始化 BM25Retriever，直接使用 shared_nodes
             retriever = BM25Retriever.from_defaults(
-                nodes=nodes,
+                nodes=shared_nodes,
                 similarity_top_k=2,  # 设置返回的 Top-K 数量
                 tokenizer=tokenize_text  # 传入自定义的中文分词器
             )
@@ -343,10 +341,10 @@ async def build(args: argparse.Namespace) -> None:
     # ---- build & save graph index ----
     if args.enable_graph:
         from flexrag.components.retrieval import GraphRetriever
-        from flexrag.components.retrieval.neo4j_graph_retriever import Neo4jGraphRetriever
+        # from flexrag.components.retrieval.neo4j_graph_retriever import Neo4jGraphRetriever
+
         graph_persist_dir = os.path.join(output_dir, "graph_index")
-        if not os.path.exists(graph_persist_dir):
-            os.makedirs(graph_persist_dir)
+        os.makedirs(graph_persist_dir, exist_ok=True)
 
         graph_retriever = GraphRetriever(
             # graph_retriever = Neo4jGraphRetriever(
@@ -356,7 +354,11 @@ async def build(args: argparse.Namespace) -> None:
             persist_dir=graph_persist_dir,
         )
         t3 = time.perf_counter()
-        await graph_retriever.build_graph(builder._raw_docs[:5])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
+
+        # 传入全局共享的切分节点。
+        nodes_for_graph = shared_nodes  # 或 shared_nodes[:20] 仅用于快速调试
+        print(f"[INFO] Building Graph index with {len(nodes_for_graph)} shared nodes...")
+        await graph_retriever.build_graph(nodes_for_graph[:2])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
         elapsed_graph = time.perf_counter() - t3
         print(f"[INFO] Graph Index built and saved in {elapsed_graph:.1f}s.")
 

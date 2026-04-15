@@ -28,10 +28,10 @@ settings = Settings()
 
 # 知识库路径映射
 KB_DICT = {
-    "hotpotqa": "./data/knowledge_persist_dir/hotpotqa",
-    "2wikimultihopqa": "./data/knowledge_persist_dir/2wikimultihopqa",
-    "musique": "./data/knowledge_persist_dir/musique",
-    "nq": "./data/knowledge_persist_dir/nq"
+    "hotpotqa": "./data/knowledge_persist_dir/Qwen3-Embedding-0.6B/hotpotqa",
+    "2wikimultihopqa": "./data/knowledge_persist_dir/Qwen3-Embedding-0.6B/2wikimultihopqa",
+    "musique": "./data/knowledge_persist_dir/Qwen3-Embedding-0.6B/musique",
+    "nq": "./data/knowledge_persist_dir/Qwen3-Embedding-0.6B/nq"
 }
 
 # 共享的基础组件（LLM、EmbedModel 等与知识库无关的通用组件）
