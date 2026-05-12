@@ -13,7 +13,7 @@ from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
 from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
-from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
+from flexrag.components.reasoning import OpenAIGenerator, JapaneseOpenAIGenerator, LLMContextEvaluator
 
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class RAGPipeline:
             retriever: BaseFlexRetriever,
             post_retrieval_optimizer: PostRetrieval,
             context_evaluator: LLMContextEvaluator,
-            generator: OpenAIGenerator,
+            generator: OpenAIGenerator | JapaneseOpenAIGenerator,
             settings: Settings,
             checkpoint_db_path: Optional[str] = None,
     ) -> None:

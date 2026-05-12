@@ -94,7 +94,7 @@ class RAGState(BaseModel):
 class GenOutput(BaseModel):
     answer: str = Field(..., description="The final generated answer")
     evidence: list[str] = Field(..., description="Source document excerpts used to produce the answer")
-    thread_id: str = Field("", description="Checkpoint thread ID; empty when checkpointing is disabled")
+    # thread_id: str = Field("", description="Checkpoint thread ID; empty when checkpointing is disabled")
 
 
 class RAGOutput(BaseModel):
