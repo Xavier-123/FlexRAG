@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import os
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
@@ -112,6 +115,55 @@ class RAGPipeline:
         if self._checkpoint_conn is not None:
             self._checkpoint_conn.close()
             self._checkpoint_conn = None
+
+    @staticmethod
+    def _extract_timing_records(trace: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        for item in trace or []:
+            if not isinstance(item, dict):
+                continue
+            elapsed = item.get("elapsed_ms")
+            node = item.get("node")
+            if isinstance(node, str) and isinstance(elapsed, (float, int)):
+                iteration = item.get("iteration_count", item.get("iteration", 0))
+                records.append(
+                    {
+                        "node": node,
+                        "iteration": int(iteration) if isinstance(iteration, int) else 0,
+                        "elapsed_ms": round(float(elapsed), 3),
+                    }
+                )
+        return records
+
+    def _log_timing_summary(self, thread_id: str, records: list[dict[str, Any]]) -> None:
+        if not records:
+            return
+        total_ms = round(sum(r["elapsed_ms"] for r in records), 3)
+        logger.info("[timing] thread_id=%s total=%.3fms", thread_id, total_ms)
+        for record in records:
+            logger.info(
+                "[timing] thread_id=%s node=%s iteration=%d elapsed=%.3fms",
+                thread_id,
+                record["node"],
+                record["iteration"],
+                record["elapsed_ms"],
+            )
+
+    def _persist_timing_summary(self, thread_id: str, records: list[dict[str, Any]]) -> None:
+        if not records:
+            return
+        path = Path(self._settings.timing_metrics_path).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        total_ms = round(sum(r["elapsed_ms"] for r in records), 3)
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "thread_id": thread_id,
+            "total_elapsed_ms": total_ms,
+            "modules": records,
+        }
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        logger.info("[timing] saved timing metrics to %s", path)
 
     def __del__(self) -> None:
         self.close()
@@ -286,6 +338,7 @@ class RAGPipeline:
         answer: str = ""
         evidence: list[str] = []
         error_msg: Optional[str] = None
+        timing_records: list[dict[str, Any]] = []
 
         try:
             async for event in self._graph.astream_events(
@@ -318,6 +371,9 @@ class RAGPipeline:
                             answer = output["answer"]
                         if "evidence" in output:
                             evidence = output["evidence"]
+                        timing_records.extend(
+                            self._extract_timing_records(output.get(_INTERNAL_TRACE_KEY))
+                        )
                     # Strip the internal node_trace list to keep events compact.
                     node_output: dict = {}
                     if isinstance(output, dict):
@@ -332,6 +388,9 @@ class RAGPipeline:
         if error_msg:
             yield {"type": "error", "message": f"RAG pipeline error: {error_msg}"}
             return
+
+        self._log_timing_summary(run_thread_id, timing_records)
+        self._persist_timing_summary(run_thread_id, timing_records)
 
         yield {
             "type": "result",
@@ -388,6 +447,10 @@ class RAGPipeline:
 
         if error := result.get("error"):
             raise RuntimeError(f"RAG pipeline error: {error}")
+
+        timing_records = self._extract_timing_records(result.get("node_trace"))
+        self._log_timing_summary(run_thread_id, timing_records)
+        self._persist_timing_summary(run_thread_id, timing_records)
 
         return RAGOutput(
             answer=result.get("answer", ""),

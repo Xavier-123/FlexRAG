@@ -178,6 +178,7 @@ MAX_ITERATIONS=3        # Agentic 迭代重查最大轮数 (3)
 CHECKPOINT_DB_PATH=./data/checkpoints.db   # 启用 LangGraph SQLite 检查点（不设则禁用）
 DRAW_IMAGE_PATH=./langgraph.png            # 保存架构图（不设则不生成）
 LOG_LEVEL=INFO                             # 日志级别 (INFO)
+TIMING_METRICS_PATH=./data/timing_metrics.jsonl  # 模块耗时统计本地落盘文件（JSONL）
 ```
 
 ### 运行项目
@@ -454,3 +455,4 @@ python -m pytest tests/ -v
 | `CHECKPOINT_DB_PATH` | `None`（禁用） | LangGraph SQLite 检查点路径 |
 | `DRAW_IMAGE_PATH` | `None`（不生成） | LangGraph 架构图保存路径 |
 | `LOG_LEVEL` | `INFO` | 日志级别（DEBUG/INFO/WARNING/ERROR/CRITICAL） |
+| `TIMING_METRICS_PATH` | `./data/timing_metrics.jsonl` | 模块耗时统计本地落盘文件（JSONL） |

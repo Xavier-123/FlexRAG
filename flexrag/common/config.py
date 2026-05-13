@@ -151,6 +151,11 @@ class Settings(BaseSettings):
         validation_alias="OUTPUT_FILE",
         description="输出的测试结果文件路径",
     )
+    timing_metrics_path: str = Field(
+        default="./data/timing_metrics.jsonl",
+        validation_alias="TIMING_METRICS_PATH",
+        description="每次运行的模块耗时统计落盘路径（JSONL）",
+    )
 
     # --- Pipeline component feature flags ---
     # Pre-retrieval query optimizers

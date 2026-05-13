@@ -19,6 +19,7 @@ can route to a graceful-error node if desired (see :mod:`flexrag.workflows.graph
 
 from __future__ import annotations
 import logging
+import time
 from typing import Any
 
 from flexrag.components.pre_retrieval import PreQueryOptimizer
@@ -35,6 +36,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 StateDict = dict[str, Any]
 
+def _elapsed_ms(start_time: float) -> float:
+    return round((time.perf_counter() - start_time) * 1000, 3)
+
 
 # ---------------------------------------------------------------------------
 # Node factories
@@ -49,6 +53,7 @@ def make_pre_retrieval_optimizer_node(
         logger.info("-------- pre retrieval optimizer node --------")
         if state.get("error"):
             return {}
+        start_time = time.perf_counter()
         original_query: str = state.get("original_query") or state["query"]
         accumulated_context: list[str] = state.get("accumulated_context", [""])
         missing_info: str = state.get("missing_info", "")
@@ -61,6 +66,8 @@ def make_pre_retrieval_optimizer_node(
                 missing_info=missing_info,
                 previous_queries=state.get("current_queries", {}),
             )
+            elapsed = _elapsed_ms(start_time)
+            logger.info("[query_optimizer] elapsed=%.3fms", elapsed)
             return {
                 "iteration_count": state["iteration_count"],
                 "original_query": original_query,
@@ -71,6 +78,7 @@ def make_pre_retrieval_optimizer_node(
                         "node": "query_optimizer",
                         "iteration": iteration_count,
                         "optimized_queries": optimized_queries,
+                        "elapsed_ms": elapsed,
                     }
                 ],
             }
@@ -103,6 +111,7 @@ def make_retrieve_node(
             ``state["retrieved_docs"]``
         """
         logger.info("-------- retrieve node --------")
+        start_time = time.perf_counter()
         optimized_queries: list[str] = state.get("optimized_queries") or []
         queries = optimized_queries if optimized_queries else [state["original_query"]]
         logger.info("[retrieve] %d queries  top_k=%d", len(queries), settings.top_k_retrieval)
@@ -117,9 +126,11 @@ def make_retrieve_node(
                         all_docs.append(d)
             logger.info("[retrieve] %d unique docs from %d queries", len(all_docs), len(queries))
             retrieved_docs = [d.model_dump() for d in all_docs]
+            elapsed = _elapsed_ms(start_time)
+            logger.info("[retrieve] elapsed=%.3fms", elapsed)
             return {
                 "retrieved_docs": retrieved_docs,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs": retrieved_docs}],
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs": retrieved_docs, "elapsed_ms": elapsed}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)
@@ -137,6 +148,7 @@ def make_post_retrieval_optimizer_node(
         logger.info("-------- post retrieval optimizer node --------")
         if state.get("error"):
             return {}
+        start_time = time.perf_counter()
         query: str = state.get("original_query") or state["query"]
         accumulated_context: list[str] = state.get("accumulated_context")
         raw_docs: list[dict] = state.get("retrieved_docs", [])
@@ -151,17 +163,21 @@ def make_post_retrieval_optimizer_node(
             if isinstance(optimized_result, tuple) and len(optimized_result) == 2:
                 # LLMContextOptimizer case
                 optimized_context, prompt_string = optimized_result
+                elapsed = _elapsed_ms(start_time)
+                logger.info("[optimize_context] elapsed=%.3fms", elapsed)
                 return {
                     "optimized_context": optimized_context,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_context": optimized_context}],
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_context": optimized_context, "elapsed_ms": elapsed}],
                 }
             elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
                 # OpenAILikeReranker case
                 reranked_docs = [d.model_dump() for d in optimized_result]
                 optimized_context = '\n\n'.join(reranked_docs)
+                elapsed = _elapsed_ms(start_time)
+                logger.info("[rerank] elapsed=%.3fms", elapsed)
                 return {
                     "optimized_context": optimized_context,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "optimized_query": optimized_context}],
+                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "optimized_query": optimized_context, "elapsed_ms": elapsed}],
                 }
 
         except Exception as exc:  # noqa: BLE001
@@ -179,6 +195,7 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
         logger.info("-------- context evaluator node --------")
         if state.get("error"):
             return {}
+        start_time = time.perf_counter()
         original_query: str = state.get("original_query") or state["query"]
         context: str = state.get("optimized_context", "")
         accumulated_context: list[str] = state.get("accumulated_context", [""])
@@ -186,6 +203,8 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
         iteration_count = int(state.get("iteration_count", 0)) + 1
         try:
             result = await evaluator.evaluate(original_query=original_query, optimized_context=context, accumulated_context=accumulated_context)
+            elapsed = _elapsed_ms(start_time)
+            logger.info("[context_evaluator] elapsed=%.3fms", elapsed)
             return {
                 "iteration_count": iteration_count,
                 "context_sufficient": result.context_sufficient,
@@ -194,7 +213,7 @@ def make_context_evaluator_node(evaluator: BaseContextEvaluator) -> Any:
                 "accumulated_context": result.accumulated_context,
                 "node_trace": [{"iteration_count": state["iteration_count"], "node": "context_evaluator",
                                 "context_sufficient": result.context_sufficient, "judge_reason": result.judge_reason,
-                                "prompt": result.prompt_string
+                                "prompt": result.prompt_string, "elapsed_ms": elapsed
                                 }],
             }
         except Exception as exc:  # noqa: BLE001
@@ -227,6 +246,7 @@ def make_generate_node(generator: BaseGenerator) -> Any:
         logger.info("-------- generate node --------")
         if state.get("error"):
             return {}
+        start_time = time.perf_counter()
         query: str = state.get("original_query") or state["query"]
         context: str = state.get("optimized_context", "")
         raw_docs: list[dict] = state.get("retrieved_docs", [])
@@ -235,10 +255,12 @@ def make_generate_node(generator: BaseGenerator) -> Any:
         logger.info("[generate] query=%r  context_len=%d", query, len(context))
         try:
             output = await generator.generate(query, context, accumulated_context, source_texts)
+            elapsed = _elapsed_ms(start_time)
+            logger.info("[generate] elapsed=%.3fms", elapsed)
             return {
                 "answer": output.answer,
                 "evidence": output.evidence,
-                "node_trace": [{"node": "generate", "query": query, "answer": output.answer, "evidence": output.evidence}],
+                "node_trace": [{"node": "generate", "query": query, "answer": output.answer, "evidence": output.evidence, "elapsed_ms": elapsed}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[generate] failed: %s", exc)
