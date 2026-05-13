@@ -172,7 +172,7 @@ def make_post_retrieval_optimizer_node(
             elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
                 # OpenAILikeReranker case
                 reranked_docs = [d.model_dump() for d in optimized_result]
-                optimized_context = '\n\n'.join(d.get("text", "") for d in reranked_docs if d.get("text"))
+                optimized_context = '\n\n'.join(d.get("text", "") for d in reranked_docs)
                 elapsed = _elapsed_ms(start_time)
                 logger.info("[rerank] elapsed=%.3fms", elapsed)
                 return {
