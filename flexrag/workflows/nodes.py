@@ -77,7 +77,6 @@ def make_pre_retrieval_optimizer_node(
                     {
                         "node": "query_optimizer",
                         "iteration": iteration_count,
-                        "iteration_count": iteration_count,
                         "optimized_queries": optimized_queries,
                         "elapsed_ms": elapsed,
                     }
@@ -131,7 +130,7 @@ def make_retrieve_node(
             logger.info("[retrieve] elapsed=%.3fms", elapsed)
             return {
                 "retrieved_docs": retrieved_docs,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs_count": len(retrieved_docs), "retrieved_docs": retrieved_docs, "elapsed_ms": elapsed}],
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs": retrieved_docs, "elapsed_ms": elapsed}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)

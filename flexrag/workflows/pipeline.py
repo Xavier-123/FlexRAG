@@ -127,7 +127,7 @@ class RAGPipeline:
             elapsed = item.get("elapsed_ms")
             node = item.get("node")
             if isinstance(node, str) and isinstance(elapsed, (float, int)):
-                iteration = item.get("iteration_count")
+                iteration = item.get("iteration_count", item.get("iteration"))
                 records.append(
                     {
                         "node": node,
