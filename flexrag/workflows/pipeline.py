@@ -7,6 +7,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
@@ -70,6 +71,7 @@ class RAGPipeline:
         self._retriever = retriever
         self._settings = settings
         self._checkpoint_db_path = checkpoint_db_path
+        self._timing_write_lock = Lock()
 
         # --- Checkpoint saver (optional) ---
         # SqliteSaver is used because it works correctly with both the
@@ -125,7 +127,7 @@ class RAGPipeline:
             elapsed = item.get("elapsed_ms")
             node = item.get("node")
             if isinstance(node, str) and isinstance(elapsed, (float, int)):
-                iteration = item.get("iteration_count", item.get("iteration", 0))
+                iteration = item.get("iteration_count")
                 records.append(
                     {
                         "node": node,
@@ -161,8 +163,9 @@ class RAGPipeline:
             "total_elapsed_ms": total_ms,
             "modules": records,
         }
-        with path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        with self._timing_write_lock:
+            with path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(payload, ensure_ascii=False) + "\n")
         logger.info("[timing] saved timing metrics to %s", path)
 
     def __del__(self) -> None:

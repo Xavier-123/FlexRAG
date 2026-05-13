@@ -76,7 +76,7 @@ def make_pre_retrieval_optimizer_node(
                 "node_trace": [
                     {
                         "node": "query_optimizer",
-                        "iteration": iteration_count,
+                        "iteration_count": iteration_count,
                         "optimized_queries": optimized_queries,
                         "elapsed_ms": elapsed,
                     }
@@ -130,7 +130,7 @@ def make_retrieve_node(
             logger.info("[retrieve] elapsed=%.3fms", elapsed)
             return {
                 "retrieved_docs": retrieved_docs,
-                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs": retrieved_docs, "elapsed_ms": elapsed}],
+                "node_trace": [{"iteration_count": state["iteration_count"], "node": "retrieve", "queries": queries, "retrieved_docs_count": len(retrieved_docs), "elapsed_ms": elapsed}],
             }
         except Exception as exc:  # noqa: BLE001
             logger.exception("[retrieve] failed: %s", exc)
@@ -172,7 +172,7 @@ def make_post_retrieval_optimizer_node(
             elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
                 # OpenAILikeReranker case
                 reranked_docs = [d.model_dump() for d in optimized_result]
-                optimized_context = '\n\n'.join(reranked_docs)
+                optimized_context = '\n\n'.join(d["text"] for d in reranked_docs)
                 elapsed = _elapsed_ms(start_time)
                 logger.info("[rerank] elapsed=%.3fms", elapsed)
                 return {
