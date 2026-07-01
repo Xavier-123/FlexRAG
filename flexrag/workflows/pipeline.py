@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from flexrag.common import RAGOutput, Settings
 from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
-from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding, LayeredRetriever
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
@@ -159,20 +159,48 @@ class RAGPipeline:
 
         persist_dir = settings.knowledge_persist_dir
         bm25_dir = os.path.join(settings.knowledge_persist_dir, "bm25_index")
-        retriever = HybridRetriever(
-            retrievers=[
-                # MultiVectorRetriever(
-                #     index=None,
-                #     embed_model=embed_model,
-                #     top_k=5,
-                #     persist_dir=persist_dir,
-                # ),
+        layered_dir = os.path.join(settings.knowledge_persist_dir, "layered_index")
+
+        retriever_list: list[BaseFlexRetriever] = []
+
+        if settings.use_multi_vector_retriever:
+            retriever_list.append(
+                MultiVectorRetriever(
+                    embed_model=embed_model,
+                    vector_store_type=settings.vector_store_type,
+                    dense_mode=settings.dense_mode,
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=persist_dir,
+                )
+            )
+
+        if settings.use_bm25_retriever:
+            retriever_list.append(
                 BM25Retriever(
-                    top_k=5,
+                    top_k=settings.top_k_retrieval,
                     persist_dir=bm25_dir,
                 )
-            ]
-        )
+            )
+
+        if settings.use_layered_retriever:
+            retriever_list.append(
+                LayeredRetriever(
+                    embed_model=embed_model,
+                    llm=llm,
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=layered_dir,
+                )
+            )
+
+        if not retriever_list:
+            retriever_list.append(
+                BM25Retriever(
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=bm25_dir,
+                )
+            )
+
+        retriever = HybridRetriever(retrievers=retriever_list)
 
         post_retrieval_optimizer = PostRetrieval([
             OpenAILikeReranker(

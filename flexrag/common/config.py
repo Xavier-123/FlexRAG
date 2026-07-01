@@ -209,6 +209,12 @@ class Settings(BaseSettings):
         validation_alias="USE_GRAPH_RETRIEVER",
         description="Whether to enable GraphRetriever (knowledge-graph search)",
     )
+    # 三级轻量索引 ReAct 检索
+    use_layered_retriever: bool = Field(
+        False,
+        validation_alias="USE_LAYERED_RETRIEVER",
+        description="Whether to enable LayeredRetriever (keyword/sentence/chunk ReAct search)",
+    )
 
     # Post-retrieval processors
     use_reranker: bool = Field(

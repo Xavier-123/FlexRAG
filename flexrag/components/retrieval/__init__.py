@@ -7,6 +7,7 @@ from flexrag.components.retrieval.multi_vector_retriever import MultiVectorRetri
 from flexrag.components.retrieval.retrieval_opt import HybridRetriever
 from flexrag.components.retrieval.bm25_retriever import BM25Retriever
 from flexrag.components.retrieval.graph_retriever import GraphRetriever
+from flexrag.components.retrieval.layered_retriever import LayeredRetriever, AgentContext
 
 __all__ = [
     "BaseFlexRetriever",
@@ -15,5 +16,7 @@ __all__ = [
     "_CustomReader",
     "HybridRetriever",
     "BM25Retriever",
-    "GraphRetriever"
+    "GraphRetriever",
+    "LayeredRetriever",
+    "AgentContext",
 ]

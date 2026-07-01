@@ -233,6 +233,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Build a Graph index.")
     parser.add_argument("--top-k-graph", type=int, default=2,
                         help="检索最相关的节点/边数量 (仅在 --enable-graph 时生效)")
+
+    # 三级轻量索引
+    parser.add_argument("--enable-layered", action="store_true",
+                        help="Build a layered index (keyword/sentence/chunk tiers).")
     parser.add_argument("--llm-model", type=str, default="Qwen/Qwen3.5-35B-A3B")
     parser.add_argument("--llm-base-url", type=str, default="https://api-inference.modelscope.cn/v1")
     parser.add_argument("--llm-api-key", type=str, default=None)
@@ -361,6 +365,33 @@ async def build(args: argparse.Namespace) -> None:
         await graph_retriever.build_graph(nodes_for_graph[:2])  # 直接使用原始文档构建图谱，GraphRetriever 内部会处理切分和嵌入
         elapsed_graph = time.perf_counter() - t3
         print(f"[INFO] Graph Index built and saved in {elapsed_graph:.1f}s.")
+
+    # ---- build & save layered index ----
+    if args.enable_layered:
+        from flexrag.components.retrieval import LayeredRetriever
+        from langchain_openai import ChatOpenAI
+
+        layered_persist_dir = os.path.join(output_dir, "layered_index")
+        os.makedirs(layered_persist_dir, exist_ok=True)
+
+        # build_index 仅需 embed_model；llm 仅在线 ReAct 检索时使用
+        layered_llm = ChatOpenAI(
+            model=args.llm_model,
+            api_key=args.llm_api_key,
+            base_url=args.llm_base_url,
+            temperature=0.0,
+        )
+        layered_retriever = LayeredRetriever(
+            embed_model=embed_model,
+            llm=layered_llm,
+            persist_dir=None,
+        )
+        t4 = time.perf_counter()
+        print(f"[INFO] Building Layered index with {len(shared_nodes)} shared nodes...")
+        await layered_retriever.build_index(nodes=shared_nodes)
+        await layered_retriever.save(layered_persist_dir)
+        elapsed_layered = time.perf_counter() - t4
+        print(f"[INFO] Layered Index built and saved to '{layered_persist_dir}' in {elapsed_layered:.1f}s.")
 
     print(f"[INFO] Total time: {time.perf_counter() - t0:.1f}s.")
 
