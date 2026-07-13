@@ -11,12 +11,31 @@ from langchain_openai import ChatOpenAI
 from flexrag.common import RAGOutput, Settings
 from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
-from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding
+from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding, LayeredRetriever
 from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# State keys to extract per node for input display in the UI.
+# Only a curated subset of the full LangGraph state is forwarded so that the
+# streaming events stay lightweight.
+# ---------------------------------------------------------------------------
+_NODE_INPUT_KEYS: dict[str, list[str]] = {
+    "pre_retrieval_optimizer": [
+        "original_query", "missing_info", "iteration_count", "missing_info_history",
+    ],
+    "retrieve": ["optimized_queries", "original_query"],
+    "post_retrieval_optimizer": ["retrieved_docs", "original_query"],
+    "context_evaluator": ["original_query", "optimized_context", "accumulated_context"],
+    "generate": ["original_query", "accumulated_context", "optimized_context"],
+}
+
+# Internal state key that stores the per-node execution trace; excluded from
+# the streaming events so that the events stay compact.
+_INTERNAL_TRACE_KEY = "node_trace"
 
 
 class RAGPipeline:
@@ -140,20 +159,48 @@ class RAGPipeline:
 
         persist_dir = settings.knowledge_persist_dir
         bm25_dir = os.path.join(settings.knowledge_persist_dir, "bm25_index")
-        retriever = HybridRetriever(
-            retrievers=[
-                # MultiVectorRetriever(
-                #     index=None,
-                #     embed_model=embed_model,
-                #     top_k=5,
-                #     persist_dir=persist_dir,
-                # ),
+        layered_dir = os.path.join(settings.knowledge_persist_dir, "layered_index")
+
+        retriever_list: list[BaseFlexRetriever] = []
+
+        if settings.use_multi_vector_retriever:
+            retriever_list.append(
+                MultiVectorRetriever(
+                    embed_model=embed_model,
+                    vector_store_type=settings.vector_store_type,
+                    dense_mode=settings.dense_mode,
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=persist_dir,
+                )
+            )
+
+        if settings.use_bm25_retriever:
+            retriever_list.append(
                 BM25Retriever(
-                    top_k=5,
+                    top_k=settings.top_k_retrieval,
                     persist_dir=bm25_dir,
                 )
-            ]
-        )
+            )
+
+        if settings.use_layered_retriever:
+            retriever_list.append(
+                LayeredRetriever(
+                    embed_model=embed_model,
+                    llm=llm,
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=layered_dir,
+                )
+            )
+
+        if not retriever_list:
+            retriever_list.append(
+                BM25Retriever(
+                    top_k=settings.top_k_retrieval,
+                    persist_dir=bm25_dir,
+                )
+            )
+
+        retriever = HybridRetriever(retrievers=retriever_list)
 
         post_retrieval_optimizer = PostRetrieval([
             OpenAILikeReranker(
@@ -223,6 +270,103 @@ class RAGPipeline:
         """
         import asyncio
         return asyncio.run(self.arun(query, thread_id=thread_id))
+
+    async def astream_run(self, query: str, thread_id: Optional[str] = None):
+        """Execute the RAG pipeline with real-time node-level streaming events.
+
+        Uses LangGraph's ``astream_events`` to emit a progress event each time a
+        pipeline node starts or finishes, enabling live UI updates without waiting
+        for the entire workflow to complete.
+
+        Yields:
+            dict: One of the following event shapes:
+
+            * ``{"type": "node_start", "node": str}``
+              Emitted when a LangGraph node begins execution.
+            * ``{"type": "node_end", "node": str}``
+              Emitted when a LangGraph node finishes execution.
+            * ``{"type": "result", "answer": str, "evidence": list[str], "thread_id": str}``
+              Emitted once after all nodes complete – carries the final answer.
+            * ``{"type": "error", "message": str}``
+              Emitted on an unrecoverable error; no ``result`` event follows.
+
+        Args:
+            query: The user's question.
+            thread_id: Optional checkpoint thread identifier.  A fresh UUID is
+                generated per call when ``None``.
+        """
+        run_thread_id = thread_id or str(uuid.uuid4())
+        config: dict[str, Any] = {"configurable": {"thread_id": run_thread_id}}
+
+        initial_state: dict[str, Any] = {
+            "query": query,
+            "original_query": query,
+            "current_queries": {},
+            "optimized_queries": [],
+            "iteration_count": 0,
+            "max_iterations": self._settings.max_iterations,
+            "missing_info": "",
+            "missing_info_history": [],
+            "accumulated_context": [],
+            "node_trace": [],
+        }
+
+        answer: str = ""
+        evidence: list[str] = []
+        error_msg: Optional[str] = None
+
+        try:
+            async for event in self._graph.astream_events(
+                initial_state, config=config, version="v2"
+            ):
+                event_type: str = event.get("event", "")
+                metadata: dict = event.get("metadata", {})
+                node_name: Optional[str] = metadata.get("langgraph_node")
+
+                # Only process events that belong to a named graph node.
+                if not node_name:
+                    continue
+
+                if event_type == "on_chain_start":
+                    raw_input = event.get("data", {}).get("input", {})
+                    keys = _NODE_INPUT_KEYS.get(node_name, [])
+                    node_input = (
+                        {k: raw_input[k] for k in keys if k in raw_input}
+                        if isinstance(raw_input, dict)
+                        else {}
+                    )
+                    yield {"type": "node_start", "node": node_name, "input": node_input}
+
+                elif event_type == "on_chain_end":
+                    output = event.get("data", {}).get("output", {})
+                    if isinstance(output, dict):
+                        if output.get("error"):
+                            error_msg = output["error"]
+                        if "answer" in output:
+                            answer = output["answer"]
+                        if "evidence" in output:
+                            evidence = output["evidence"]
+                    # Strip the internal node_trace list to keep events compact.
+                    node_output: dict = {}
+                    if isinstance(output, dict):
+                        node_output = {k: v for k, v in output.items() if k != _INTERNAL_TRACE_KEY}
+                    yield {"type": "node_end", "node": node_name, "output": node_output}
+
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Streaming pipeline error: %s", exc)
+            yield {"type": "error", "message": str(exc)}
+            return
+
+        if error_msg:
+            yield {"type": "error", "message": f"RAG pipeline error: {error_msg}"}
+            return
+
+        yield {
+            "type": "result",
+            "answer": answer,
+            "evidence": evidence,
+            "thread_id": run_thread_id,
+        }
 
     async def arun(self, query: str, thread_id: Optional[str] = None):
         """Execute the full RAG pipeline for *query* asynchronously.

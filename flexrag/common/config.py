@@ -98,18 +98,6 @@ class Settings(BaseSettings):
         description="Token overlap between consecutive document chunks",
     )
 
-    # --- 向量检索相关 ---
-    top_k_retrieval: int = Field(
-        10,
-        validation_alias="TOP_K_RETRIEVAL",
-        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
-    )
-    vector_store_type: str = Field(
-        "faiss",
-        validation_alias="VECTOR_STORE_TYPE",
-        description="向量检索使用的存储类型(faiss|milvus|chroma)"
-    )
-
     # --- Reranker ---
     reranker_model: str = Field(
         "BAAI/bge-reranker-v2-m3",
@@ -162,6 +150,87 @@ class Settings(BaseSettings):
         default="./eval_results.json",
         validation_alias="OUTPUT_FILE",
         description="输出的测试结果文件路径",
+    )
+
+    # --- Pipeline component feature flags ---
+    # Pre-retrieval query optimizers
+    use_query_rewriter: bool = Field(
+        True,
+        validation_alias="USE_QUERY_REWRITER",
+        description="Whether to enable QueryRewriter in the pre-retrieval optimizer",
+    )
+    use_query_expander: bool = Field(
+        True,
+        validation_alias="USE_QUERY_EXPANDER",
+        description="Whether to enable QueryExpander in the pre-retrieval optimizer",
+    )
+    use_task_splitter: bool = Field(
+        True,
+        validation_alias="USE_TASK_SPLITTER",
+        description="Whether to enable TaskSplitter in the pre-retrieval optimizer",
+    )
+    use_terminology_enricher: bool = Field(
+        False,
+        validation_alias="USE_TERMINOLOGY_ENRICHER",
+        description="Whether to enable TerminologyEnricher in the pre-retrieval optimizer",
+    )
+
+    # Retrievers
+    top_k_retrieval: int = Field(
+        10,
+        validation_alias="TOP_K_RETRIEVAL",
+        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
+    )
+    # 稠密检索
+    vector_store_type: str = Field(
+        "faiss",
+        validation_alias="VECTOR_STORE_TYPE",
+        description="向量检索使用的存储类型(faiss|milvus|chroma)"
+    )
+    dense_mode: str = Field(
+        "exact_l2",
+        validation_alias="DENSE_MODE",
+        description="exact_l2 | exact_cosine | approx_l2 | approx_cosine，计算距离的方式和索引类型"
+    )
+    use_multi_vector_retriever: bool = Field(
+        True,
+        validation_alias="USE_MULTI_VECTOR_RETRIEVER",
+        description="Whether to enable MultiVectorRetriever (dense/vector search)",
+    )
+    # 稀疏检索
+    use_bm25_retriever: bool = Field(
+        True,
+        validation_alias="USE_BM25_RETRIEVER",
+        description="Whether to enable BM25Retriever (sparse/keyword search)",
+    )
+    # 图检索
+    use_graph_retriever: bool = Field(
+        False,
+        validation_alias="USE_GRAPH_RETRIEVER",
+        description="Whether to enable GraphRetriever (knowledge-graph search)",
+    )
+    # 三级轻量索引 ReAct 检索
+    use_layered_retriever: bool = Field(
+        False,
+        validation_alias="USE_LAYERED_RETRIEVER",
+        description="Whether to enable LayeredRetriever (keyword/sentence/chunk ReAct search)",
+    )
+
+    # Post-retrieval processors
+    use_reranker: bool = Field(
+        True,
+        validation_alias="USE_RERANKER",
+        description="Whether to enable OpenAILikeReranker in the post-retrieval optimizer",
+    )
+    use_llm_context_optimizer: bool = Field(
+        True,
+        validation_alias="USE_LLM_CONTEXT_OPTIMIZER",
+        description="Whether to enable LLMContextOptimizer in the post-retrieval optimizer",
+    )
+    use_copy_paste_retrieval: bool = Field(
+        False,
+        validation_alias="USE_COPY_PASTE_RETRIEVAL",
+        description="Whether to enable CopyPasteRetrieval in the post-retrieval optimizer",
     )
 
     # --- Graph architecture diagram ---

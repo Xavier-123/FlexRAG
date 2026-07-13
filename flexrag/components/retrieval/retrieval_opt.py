@@ -16,7 +16,7 @@ class HybridRetriever(BaseFlexRetriever):
         self.retrievers = retrievers
         self.weights = weights or [1.0 / len(retrievers)] * len(retrievers)
 
-    async def retrieve(self, query: str) -> list[Document]:
+    async def retrieve(self, query: str, filters=None) -> list[Document]:
         """Multi-retriever fusion retrieval."""
         logger.debug("Multi-retriever retrieving for query: %r", query)
 
@@ -24,7 +24,7 @@ class HybridRetriever(BaseFlexRetriever):
 
         # 1️⃣ 多路召回 + 加权
         for i, retriever in enumerate(self.retrievers):
-            docs = await retriever.retrieve(query)
+            docs = await retriever.retrieve(query, filters=filters)
             weight = self.weights[i]
 
             for doc in docs:

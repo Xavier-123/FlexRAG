@@ -34,7 +34,6 @@ class OpenAILikeEmbedding(BaseEmbedding):
             async_http_client: Any | None = None,
             **kwargs: Any,
     ) -> None:
-        # 1. 初始化父类 (Pydantic BaseModel)
         super().__init__(
             base_url=base_url,
             model_name=model_name,
@@ -42,7 +41,6 @@ class OpenAILikeEmbedding(BaseEmbedding):
             **kwargs
         )
 
-        # 2. 初始化内部变量
         base_url = base_url.rstrip("/")
         if base_url.endswith("/v1/embeddings"):
             self._endpoint = base_url
@@ -52,10 +50,24 @@ class OpenAILikeEmbedding(BaseEmbedding):
             self._endpoint = base_url + "/v1/embeddings"
         self._client = http_client or httpx.Client(timeout=60.0)
         self._aclient = async_http_client or httpx.AsyncClient(timeout=60.0)
+
         self.embed_batch_size = embed_batch_size
 
+    # ----------------------------
+    # lazy init clients (关键优化)
+    # ----------------------------
+    def _get_client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=60.0)
+        return self._client
+
+    def _get_aclient(self) -> httpx.AsyncClient:
+        if self._aclient is None:
+            self._aclient = httpx.AsyncClient(timeout=60.0)
+        return self._aclient
+
     # ------------------------------------------------------------------
-    # 同步方法 (Synchronous Methods)
+    # 同步方法
     # ------------------------------------------------------------------
     def _get_query_embedding(self, query: str) -> List[float]:
         """为检索的问题生成单条向量"""
@@ -72,7 +84,9 @@ class OpenAILikeEmbedding(BaseEmbedding):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        response = self._client.post(self._endpoint, json=payload, headers=headers)
+        client = self._get_client()
+        response = client.post(self._endpoint, json=payload, headers=headers)
+        # response = self._client.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()["data"]
 
@@ -81,7 +95,7 @@ class OpenAILikeEmbedding(BaseEmbedding):
         return [item["embedding"] for item in data]
 
     # ------------------------------------------------------------------
-    # 异步方法 (Asynchronous Methods)
+    # 异步方法
     # ------------------------------------------------------------------
 
     async def _aget_query_embedding(self, query: str) -> List[float]:
@@ -101,11 +115,50 @@ class OpenAILikeEmbedding(BaseEmbedding):
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
-        response = await self._aclient.post(self._endpoint, json=payload, headers=headers)
+        client = self._get_aclient()
+        response = await client.post(self._endpoint, json=payload, headers=headers)
+        # response = await self._aclient.post(self._endpoint, json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()["data"]
         data.sort(key=lambda item: item["index"])
         return [item["embedding"] for item in data]
+
+    # ----------------------------
+    # ✅ resource cleanup
+    # ----------------------------
+    def close(self) -> None:
+        """sync close"""
+        if isinstance(self._client, httpx.Client):
+            self._client.close()
+
+    async def aclose(self) -> None:
+        """async close"""
+        if isinstance(self._aclient, httpx.AsyncClient):
+            await self._aclient.aclose()
+
+    # ----------------------------
+    # context manager support
+    # ----------------------------
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.aclose()
+
+    # ----------------------------
+    # safety net
+    # ----------------------------
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class BaseFlexRetriever(ABC):
@@ -121,10 +174,11 @@ class BaseFlexRetriever(ABC):
     similarity_top_k = 10
 
     @abstractmethod
-    async def retrieve(self, query: str) -> list[Document]:
+    async def retrieve(self, query: str, filters=None) -> list[Document]:
         """Retrieve the most relevant documents for *query*.
 
         Args:
+            filters:
             query: The user's question or search string.
 
         Returns:

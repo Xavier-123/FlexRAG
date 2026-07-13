@@ -1,3 +1,6 @@
+jieba
+graphviz
+
 # Core framework
 langgraph>=0.2.0
 langgraph-checkpoint-sqlite>=1.0.0

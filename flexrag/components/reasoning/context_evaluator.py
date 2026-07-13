@@ -47,8 +47,8 @@ class LLMContextEvaluator(BaseContextEvaluator):
             response = await self._llm.ainvoke(
                 [SystemMessage(content=_SYSTEM_PROMPT_ZH), HumanMessage(content=human_prompt)]
             )
-            payload = str(response.content).strip()  # type: ignore[union-attr]
-            data = json.loads(payload)
+            payload = str(response.content).strip()
+            data = json.loads(payload)     # 使用正则从响应中提取 JSON 块，或改用 with_structured_output(ContextEvaluation)。
             context_sufficient = data.get("context_sufficient", False)
             if context_sufficient is False:
                 return ContextEvaluation(

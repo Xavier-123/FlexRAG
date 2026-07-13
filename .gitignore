@@ -23,3 +23,5 @@ build/
 
 # pytest
 .pytest_cache/
+
+./third_package/

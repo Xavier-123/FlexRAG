@@ -7,6 +7,7 @@ from llama_index.llms.langchain import LangChainLLM
 from llama_index.core.storage.storage_context import StorageContext
 from llama_index.core import load_index_from_storage, PropertyGraphIndex, Settings
 from llama_index.core.graph_stores import SimplePropertyGraphStore
+from llama_index.core.schema import BaseNode
 
 from flexrag.common.schema import Document
 from flexrag.components.retrieval import BaseFlexRetriever, OpenAILikeEmbedding
@@ -48,12 +49,6 @@ class GraphRetriever(BaseFlexRetriever):
             self,
             embed_model,
             llm: ChatOpenAI | None = None,
-            # llm_model_name: str | None = None,
-            # llm_base_url: str | None = None,
-            # llm_api_key: str | None = None,
-            # embed_model_name: str | None = None,
-            # embed_base_url: str | None = None,
-            # embed_api_key: str | None = None,
             top_k: int | None = 2,
             persist_dir: str | None = "./storage/simple_graph",
     ) -> None:
@@ -118,7 +113,8 @@ class GraphRetriever(BaseFlexRetriever):
         self._persist_dir = persist_dir
         self._load_index_if_exists()
 
-    async def build_graph(self, documents: List[Document]) -> None:
+    async def build_graph(self, documents: List[BaseNode | Document]) -> None:
+    # async def build_graph(self, documents: List[Document | TextNode]) -> None:
         """Build the knowledge graph index from the provided documents."""
         # 1. 创建基于内存的 SimplePropertyGraphStore
         property_graph_store = SimplePropertyGraphStore()  # 有时候会编码报错

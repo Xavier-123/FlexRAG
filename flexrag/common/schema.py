@@ -48,7 +48,7 @@ class RAGState(BaseModel):
 
     query: str = Field(..., description="Original user question (backward compatible)")
     original_query: str = Field("", description="Original user question (fixed across iterations)")
-    current_queries: list[str] = Field("", description="Current iteration query used for retrieval")
+    current_queries: dict[str, str] = Field(default_factory=dict, description="Current iteration query used for retrieval")
     query_type: str = Field("simple", description="Query type classified by the router: simple/vague/complex/professional")
     strategy_queries: dict[str, str] = Field(
         default_factory=dict,
