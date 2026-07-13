@@ -19,7 +19,7 @@ from flexrag.components.retrieval import (
     MultiVectorRetriever,
     OpenAILikeEmbedding,
 )
-from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
+from flexrag.components.post_retrieval import CompositeScoreReranker, PostRetrieval, OpenAILikeReranker, LLMContextOptimizer
 from flexrag.components.reasoning import LLMContextEvaluator, OpenAIGenerator
 from langchain_openai import ChatOpenAI
 
@@ -501,7 +501,7 @@ async def get_or_load_pipeline(
         return MultiVectorRetriever(
             embed_model=embed_model,
             index=None,
-            top_k=5,
+            top_k=settings.top_k_retrieval,
             persist_dir=persist_dir,
         )
 
@@ -511,7 +511,7 @@ async def get_or_load_pipeline(
     if "BM25Retriever" in retriever_names:
         retrievers.append(
             BM25Retriever(
-                top_k=5,
+                top_k=settings.top_k_retrieval,
                 persist_dir=os.path.join(persist_dir, "bm25_index"),
             )
         )
@@ -548,9 +548,11 @@ async def get_or_load_pipeline(
                 base_url=settings.reranker_base_url,
                 model=settings.reranker_model,
                 api_key=settings.reranker_api_key,
-                top_k=settings.top_k_rerank,
+                top_k=None if settings.use_composite_scoring else settings.top_k_rerank,
             )
         )
+    if settings.use_composite_scoring:
+        post_opts.append(CompositeScoreReranker.from_settings(settings))
     if "LLMContextOptimizer" in post_opt_names:
         post_opts.append(LLMContextOptimizer(llm=llm))
     post_retrieval_optimizer = PostRetrieval(post_opts)

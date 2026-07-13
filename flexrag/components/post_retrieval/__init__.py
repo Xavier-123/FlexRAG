@@ -7,11 +7,13 @@ from flexrag.components.post_retrieval.context_optimizer import LLMContextOptimi
 from flexrag.components.post_retrieval.post_retrieval_opt import PostRetrieval
 from flexrag.components.post_retrieval.copy_paste import CopyPasteRetrieval
 from flexrag.components.post_retrieval.base import BasePostRetrieval
+from flexrag.components.post_retrieval.composite_score import CompositeScoreReranker
 
 __all__ = [
     "BasePostRetrieval",
     "PostRetrieval",
     "OpenAILikeReranker",
     "LLMContextOptimizer",
-    "CopyPasteRetrieval"
+    "CopyPasteRetrieval",
+    "CompositeScoreReranker",
 ]

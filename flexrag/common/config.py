@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -117,7 +117,27 @@ class Settings(BaseSettings):
     top_k_rerank: int = Field(
         5,
         validation_alias="TOP_K_RERANK",
-        description="Number of docs kept after reranking"
+        description="Number of docs kept after reranking",
+        gt=0,
+    )
+
+    # --- Composite relevance / recency / importance scoring ---
+    use_composite_scoring: bool = Field(
+        False,
+        validation_alias="USE_COMPOSITE_SCORING",
+        description="Whether to apply relevance/recency/importance final ranking",
+    )
+    score_alpha: float = Field(0.7, validation_alias="SCORE_ALPHA", ge=0.0)
+    score_beta: float = Field(0.2, validation_alias="SCORE_BETA", ge=0.0)
+    score_gamma: float = Field(0.1, validation_alias="SCORE_GAMMA", ge=0.0)
+    recency_half_life_days: float = Field(
+        30.0, validation_alias="RECENCY_HALF_LIFE_DAYS", gt=0.0
+    )
+    timestamp_metadata_key: str = Field(
+        "timestamp", validation_alias="TIMESTAMP_METADATA_KEY", min_length=1
+    )
+    importance_metadata_key: str = Field(
+        "importance_score", validation_alias="IMPORTANCE_METADATA_KEY", min_length=1
     )
 
     # --- 执行控制与文件 IO ---
@@ -179,7 +199,8 @@ class Settings(BaseSettings):
     top_k_retrieval: int = Field(
         10,
         validation_alias="TOP_K_RETRIEVAL",
-        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量"
+        description="检索阶段 (Retrieval) 召回的 Top-K 文档数量",
+        gt=0,
     )
     # 稠密检索
     vector_store_type: str = Field(
@@ -239,6 +260,17 @@ class Settings(BaseSettings):
         validation_alias="DRAW_IMAGE_PATH",
         description="If set, saves the LangGraph architecture diagram (PNG) to this path",
     )
+
+    @model_validator(mode="after")
+    def validate_ranking_settings(self) -> "Settings":
+        weight_sum = self.score_alpha + self.score_beta + self.score_gamma
+        if abs(weight_sum - 1.0) > 1e-6:
+            raise ValueError("SCORE_ALPHA + SCORE_BETA + SCORE_GAMMA must equal 1.0")
+        if self.top_k_retrieval < self.top_k_rerank:
+            raise ValueError("TOP_K_RETRIEVAL must be greater than or equal to TOP_K_RERANK")
+        if self.timestamp_metadata_key == self.importance_metadata_key:
+            raise ValueError("Timestamp and importance metadata keys must be different")
+        return self
 
     # --- Tracing & Persistence ---
     checkpoint_db_path: Optional[str] = Field(

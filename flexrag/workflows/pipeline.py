@@ -9,10 +9,11 @@ from typing import Any, Optional
 from langchain_openai import ChatOpenAI
 
 from flexrag.common import RAGOutput, Settings
+from flexrag.common.metadata import normalize_scoring_metadata
 from flexrag.workflows.builder import build_rag_graph
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryRewriter, QueryExpander, TaskSplitter, TerminologyEnricher
 from flexrag.components.retrieval import BaseFlexRetriever, HybridRetriever, BM25Retriever, GraphRetriever, MultiVectorRetriever, OpenAILikeEmbedding, LayeredRetriever
-from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
+from flexrag.components.post_retrieval import CompositeScoreReranker, PostRetrieval, LLMContextOptimizer, OpenAILikeReranker
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 
@@ -202,15 +203,19 @@ class RAGPipeline:
 
         retriever = HybridRetriever(retrievers=retriever_list)
 
-        post_retrieval_optimizer = PostRetrieval([
-            OpenAILikeReranker(
+        post_processors = []
+        if settings.use_reranker:
+            post_processors.append(OpenAILikeReranker(
                 base_url=settings.reranker_base_url,
                 model=settings.reranker_model,
                 api_key=settings.reranker_api_key,
-                top_k=5
-            ),
-            LLMContextOptimizer(llm=llm)
-        ])
+                top_k=None if settings.use_composite_scoring else settings.top_k_rerank,
+            ))
+        if settings.use_composite_scoring:
+            post_processors.append(CompositeScoreReranker.from_settings(settings))
+        if settings.use_llm_context_optimizer:
+            post_processors.append(LLMContextOptimizer(llm=llm))
+        post_retrieval_optimizer = PostRetrieval(post_processors)
 
         context_evaluator = LLMContextEvaluator(llm=llm)
         generator = OpenAIGenerator(
@@ -244,7 +249,31 @@ class RAGPipeline:
             texts: Raw text chunks to add to the retriever's index.
             metadatas: Optional metadata dicts aligned with *texts*.
         """
-        self._retriever.add_documents(texts, metadatas=metadatas)
+        if metadatas is not None and len(metadatas) != len(texts):
+            raise ValueError("metadatas must contain exactly one item per text")
+
+        source_metadatas = metadatas or [{} for _ in texts]
+        normalized_metadatas: list[dict[str, Any]] = []
+        issue_counts = {
+            self._settings.timestamp_metadata_key: 0,
+            self._settings.importance_metadata_key: 0,
+        }
+        for metadata in source_metadatas:
+            normalized, issues = normalize_scoring_metadata(
+                metadata,
+                timestamp_key=self._settings.timestamp_metadata_key,
+                importance_key=self._settings.importance_metadata_key,
+            )
+            normalized_metadatas.append(normalized)
+            for issue in issues:
+                issue_counts[issue] += 1
+
+        if any(issue_counts.values()):
+            logger.warning(
+                "Scoring metadata missing or invalid while adding documents: %s",
+                issue_counts,
+            )
+        self._retriever.add_documents(texts, metadatas=normalized_metadatas)
         logger.info("Indexed %d document(s)", len(texts))
 
     def run(self, query: str, thread_id: Optional[str] = None):

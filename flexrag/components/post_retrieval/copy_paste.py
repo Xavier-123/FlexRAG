@@ -1,5 +1,4 @@
 from typing import Any
-from CopyPasteLLM import CopyPasteClient
 
 from flexrag.common.schema import Document
 from flexrag.components.post_retrieval.base import BasePostRetrieval
@@ -8,6 +7,12 @@ from flexrag.components.post_retrieval.base import BasePostRetrieval
 class CopyPasteRetrieval(BasePostRetrieval):
     def __init__(self, model: str, base_url: str, api_key: str = None, pipeline=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        try:
+            from CopyPasteLLM import CopyPasteClient
+        except ImportError as exc:
+            raise ImportError(
+                "CopyPasteRetrieval requires the optional CopyPasteLLM package"
+            ) from exc
         if pipeline is None:
             pipeline = ["cp-refine"]
         self.pipeline = pipeline  # Options: cp-order, cp-link, cp-refine

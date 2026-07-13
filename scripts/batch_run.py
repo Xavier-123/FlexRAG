@@ -11,7 +11,7 @@ from flexrag.common import setup_logging, Settings
 from flexrag.workflows import RAGPipeline
 from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, QueryRewriter, TaskSplitter, \
     TerminologyEnricher
-from flexrag.components.post_retrieval import PostRetrieval, OpenAILikeReranker, LLMContextOptimizer, CopyPasteRetrieval
+from flexrag.components.post_retrieval import CompositeScoreReranker, PostRetrieval, OpenAILikeReranker, LLMContextOptimizer, CopyPasteRetrieval
 from flexrag.components.retrieval import BM25Retriever, HybridRetriever, GraphRetriever, \
     MultiVectorRetriever, OpenAILikeEmbedding
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
@@ -76,8 +76,10 @@ async def setup_pipeline(settings: Settings) -> RAGPipeline:
             base_url=settings.reranker_base_url,
             model=settings.reranker_model,
             api_key=settings.reranker_api_key,
-            top_k=settings.top_k_rerank
+            top_k=None if settings.use_composite_scoring else settings.top_k_rerank,
         ))
+    if settings.use_composite_scoring:
+        post_processors.append(CompositeScoreReranker.from_settings(settings))
     if settings.use_llm_context_optimizer:
         post_processors.append(LLMContextOptimizer(llm=llm))
     if settings.use_copy_paste_retrieval:

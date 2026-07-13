@@ -14,6 +14,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ScoreDetails(BaseModel):
+    """Auditable components of a document's retrieval score."""
+
+    relevance: float = Field(..., ge=0.0, le=1.0)
+    recency: float | None = Field(default=None, ge=0.0, le=1.0)
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    final_score: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class Document(BaseModel):
     """A single document chunk returned by the retriever or reranker.
 
@@ -25,9 +34,20 @@ class Document(BaseModel):
 
     text: str = Field(..., description="Raw text content of the chunk")
     score: float = Field(0.0, description="Relevance / rerank score")
+    score_details: ScoreDetails | None = Field(
+        default=None, description="Components used to calculate the final score"
+    )
     metadata: dict[str, Any] = Field(
         default_factory=dict, description="Arbitrary chunk metadata"
     )
+
+
+class PostRetrievalResult(BaseModel):
+    """Documents and context produced by the post-retrieval pipeline."""
+
+    documents: list[Document] = Field(default_factory=list)
+    optimized_context: str = ""
+    prompt_string: str = ""
 
 
 class RAGState(BaseModel):
@@ -75,6 +95,9 @@ class RAGState(BaseModel):
     )
     retrieved_docs: list[Document] = Field(
         default_factory=list, description="Documents from the retrieval agent"
+    )
+    reranked_docs: list[Document] = Field(
+        default_factory=list, description="Documents after reranking and composite scoring"
     )
     optimized_context: str = Field(
         "", description="Pruned / summarised context for the generator"

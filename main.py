@@ -50,7 +50,7 @@ from flexrag.components.pre_retrieval import PreQueryOptimizer, QueryExpander, Q
     TerminologyEnricher
 from flexrag.components.retrieval import HybridRetriever, BM25Retriever, GraphRetriever, \
     MultiVectorRetriever, OpenAILikeEmbedding
-from flexrag.components.post_retrieval import PostRetrieval, LLMContextOptimizer, OpenAILikeReranker, CopyPasteRetrieval
+from flexrag.components.post_retrieval import CompositeScoreReranker, PostRetrieval, LLMContextOptimizer, OpenAILikeReranker, CopyPasteRetrieval
 from flexrag.components.reasoning import OpenAIGenerator, LLMContextEvaluator
 
 logger = logging.getLogger(__name__)
@@ -165,12 +165,12 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
             embed_model=embed_model,
             vector_store_type=settings.vector_store_type,
             index=None,
-            top_k=5,
+            top_k=settings.top_k_retrieval,
             persist_dir=persist_dir,
         ))
     if settings.use_bm25_retriever:
         retrievers.append(BM25Retriever(
-            top_k=5,
+            top_k=settings.top_k_retrieval,
             persist_dir=bm25_dir,
         ))
     if settings.use_graph_retriever:
@@ -188,8 +188,10 @@ def _build_pipeline(settings: Settings, is_demo: bool = False) -> RAGPipeline:
             base_url=settings.reranker_base_url,
             model=settings.reranker_model,
             api_key=settings.reranker_api_key,
-            top_k=5
+            top_k=None if settings.use_composite_scoring else settings.top_k_rerank,
         ))
+    if settings.use_composite_scoring:
+        post_processors.append(CompositeScoreReranker.from_settings(settings))
     if settings.use_llm_context_optimizer:
         post_processors.append(LLMContextOptimizer(llm=llm))
     if settings.use_copy_paste_retrieval:

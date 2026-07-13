@@ -25,7 +25,7 @@ from flexrag.components.pre_retrieval import PreQueryOptimizer
 from flexrag.components.retrieval import BaseFlexRetriever
 from flexrag.components.post_retrieval import PostRetrieval
 from flexrag.components.reasoning import BaseContextEvaluator, BaseGenerator
-from flexrag.common.schema import Document
+from flexrag.common.schema import Document, PostRetrievalResult
 from flexrag.common.config import settings
 
 logger = logging.getLogger(__name__)
@@ -107,14 +107,14 @@ def make_retrieve_node(
         queries = optimized_queries if optimized_queries else [state["original_query"]]
         logger.info("[retrieve] %d queries  top_k=%d", len(queries), settings.top_k_retrieval)
         try:
-            seen: set[str] = set()
-            all_docs: list[Document] = []
+            best_docs: dict[str, Document] = {}
             for query in queries:
                 docs: list[Document] = await retriever.retrieve(query)
                 for d in docs:
-                    if d.text not in seen:
-                        seen.add(d.text)
-                        all_docs.append(d)
+                    current = best_docs.get(d.text)
+                    if current is None or d.score > current.score:
+                        best_docs[d.text] = d
+            all_docs = sorted(best_docs.values(), key=lambda doc: doc.score, reverse=True)
             logger.info("[retrieve] %d unique docs from %d queries", len(all_docs), len(queries))
             retrieved_docs = [d.model_dump() for d in all_docs]
             return {
@@ -148,22 +148,19 @@ def make_post_retrieval_optimizer_node(
                 query=query, documents=documents, accumulated_context=accumulated_context, max_tokens=max_tokens
             )
 
-            if isinstance(optimized_result, tuple) and len(optimized_result) == 2:
-                # LLMContextOptimizer case
-                optimized_context, prompt_string = optimized_result
+            if isinstance(optimized_result, PostRetrievalResult):
+                reranked_docs = [doc.model_dump() for doc in optimized_result.documents]
                 return {
-                    "optimized_context": optimized_context,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "optimize_context", "prompt": prompt_string, "optimized_context": optimized_context}],
+                    "reranked_docs": reranked_docs,
+                    "optimized_context": optimized_result.optimized_context,
+                    "node_trace": [{
+                        "iteration_count": state["iteration_count"],
+                        "node": "post_retrieval_optimizer",
+                        "prompt": optimized_result.prompt_string,
+                        "ranked_documents": reranked_docs,
+                        "optimized_context": optimized_result.optimized_context,
+                    }],
                 }
-            elif isinstance(optimized_result, list) and all(isinstance(doc, Document) for doc in optimized_result):
-                # OpenAILikeReranker case
-                reranked_docs = [d.model_dump() for d in optimized_result]
-                optimized_context = '\n\n'.join(reranked_docs)
-                return {
-                    "optimized_context": optimized_context,
-                    "node_trace": [{"iteration_count": state["iteration_count"], "node": "rerank", "optimized_query": optimized_context}],
-                }
-
         except Exception as exc:  # noqa: BLE001
             logger.exception("[rerank] failed: %s", exc)
             return {"error": f"Reranking failed: {exc}"}

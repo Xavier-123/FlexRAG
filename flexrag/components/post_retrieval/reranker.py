@@ -4,7 +4,7 @@ import logging
 import httpx
 from typing import Any
 
-from flexrag.common.schema import Document
+from flexrag.common.schema import Document, ScoreDetails
 from flexrag.components.post_retrieval.base import BasePostRetrieval
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class OpenAILikeReranker(BasePostRetrieval):
             base_url: str,
             model: str,
             api_key: str | None = None,
-            top_k: int | None = 5,
+        top_k: int | None = 5,
             http_client: Any | None = None,
     ) -> None:
         base_url = base_url.rstrip("/")
@@ -76,12 +76,19 @@ class OpenAILikeReranker(BasePostRetrieval):
             score: float = float(item["relevance_score"])
             doc = documents[idx]
             reranked.append(
-                Document(text=doc.text, score=score, metadata=doc.metadata)
+                Document(
+                    text=doc.text,
+                    score=score,
+                    metadata=doc.metadata,
+                    score_details=ScoreDetails(
+                        relevance=max(0.0, min(1.0, score))
+                    ),
+                )
             )
 
         # Sort descending by score and truncate to top_k
         reranked.sort(key=lambda d: d.score, reverse=True)
-        selected = reranked[:self._top_k]
+        selected = reranked if self._top_k is None else reranked[: self._top_k]
         logger.info("Reranked: kept %d / %d documents", len(selected), len(documents))
         return selected
 

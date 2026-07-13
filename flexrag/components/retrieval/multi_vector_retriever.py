@@ -2,6 +2,7 @@ import os
 import asyncio
 import faiss
 import json
+import logging
 from typing import Any, List, Optional, Dict
 
 from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, Settings
@@ -11,20 +12,32 @@ from llama_index.core.schema import NodeWithScore
 from llama_index.core.readers.base import BaseReader
 
 from flexrag.common.schema import Document
+from flexrag.common.metadata import normalize_scoring_metadata
 
 # -----------------------------
 # Config
 # -----------------------------
 _PROBE_TEXT = "dimension probe"
+logger = logging.getLogger(__name__)
 
 
 class _CustomReader(BaseReader):
     """自定义 JSON 读取器，专门处理 [{"idx": 0, "title": "...", "text": "..."}, ...] 格式。"""
 
-    def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50) -> None:
+    def __init__(
+        self,
+        chunk_size: int = 512,
+        chunk_overlap: int = 50,
+        timestamp_key: str = "timestamp",
+        importance_key: str = "importance_score",
+    ) -> None:
         super().__init__()
+        if timestamp_key == importance_key:
+            raise ValueError("Timestamp and importance metadata keys must be different")
         self.CHUNK_SIZE = chunk_size
         self.CHUNK_OVERLAP = chunk_overlap
+        self.TIMESTAMP_KEY = timestamp_key
+        self.IMPORTANCE_KEY = importance_key
 
     def _split_text(self, text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> list[str]:
         """
@@ -81,16 +94,28 @@ class _CustomReader(BaseReader):
             raise ValueError(f"Expected a JSON array in {file}")
 
         docs = []
+        issue_counts = {self.TIMESTAMP_KEY: 0, self.IMPORTANCE_KEY: 0}
         for item in data:
             if not isinstance(item, dict):
                 continue
 
             title = item.get("title", "").strip()
             text = item.get("text") or item.get("context") or ""
-            idx = item.get("idx")
-
             if not text:
                 continue
+
+            source_metadata = {
+                key: value for key, value in item.items() if key not in {"text", "context"}
+            }
+            if extra_info:
+                source_metadata.update(extra_info)
+            source_metadata, issues = normalize_scoring_metadata(
+                source_metadata,
+                timestamp_key=self.TIMESTAMP_KEY,
+                importance_key=self.IMPORTANCE_KEY,
+            )
+            for issue in issues:
+                issue_counts[issue] += 1
 
             # 对长文本进行滑动窗口切割
             text_chunks = self._split_text(text, chunk_size=self.CHUNK_SIZE, chunk_overlap=self.CHUNK_OVERLAP)
@@ -108,11 +133,7 @@ class _CustomReader(BaseReader):
                 content = "\n".join(content_parts)
 
                 # 将 idx 和 chunk_id 存入 metadata
-                metadata = {}
-                if idx is not None:
-                    metadata["idx"] = idx
-                if title:
-                    metadata["title"] = title
+                metadata = dict(source_metadata)
 
                 # 记录这是当前文章的第几个切块
                 metadata["chunk_id"] = chunk_id
@@ -122,6 +143,17 @@ class _CustomReader(BaseReader):
                 # metadata["parent_text"] = text
 
                 docs.append(LlamaDocument(text=content, metadata=metadata))
+
+        if any(issue_counts.values()):
+            logger.warning(
+                "Scoring metadata missing or invalid in %s: %s=%d, %s=%d, documents=%d",
+                file,
+                self.TIMESTAMP_KEY,
+                issue_counts[self.TIMESTAMP_KEY],
+                self.IMPORTANCE_KEY,
+                issue_counts[self.IMPORTANCE_KEY],
+                len(data),
+            )
 
         return docs
 

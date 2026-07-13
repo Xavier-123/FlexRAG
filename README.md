@@ -172,6 +172,15 @@ TOP_K_RERANK=5          # 重排序后保留文档数 (5)
 CONTEXT_MAX_TOKENS=3000 # 传给生成器的上下文 token 预算 (3000)
 MAX_ITERATIONS=3        # Agentic 迭代重查最大轮数 (3)
 
+# 可选：相关性、时效性、重要性复合终排
+USE_COMPOSITE_SCORING=false
+SCORE_ALPHA=0.7
+SCORE_BETA=0.2
+SCORE_GAMMA=0.1
+RECENCY_HALF_LIFE_DAYS=30
+TIMESTAMP_METADATA_KEY=timestamp
+IMPORTANCE_METADATA_KEY=importance_score
+
 # ============================================================
 # 可选高级配置
 # ============================================================
@@ -358,6 +367,25 @@ python scripts/build_knowledge_base.py --input-dir ./my_docs --enable-graph \
 python scripts/build_knowledge_base.py --input-dir ./my_docs \
     --output-dir ./my_index --chunk-size 256 --chunk-overlap 32 --force
 ```
+
+复合评分所需字段应放在 JSON 文档对象中；`timestamp` 必须是带时区的
+ISO-8601 时间，`importance_score` 必须位于 `[0, 1]`：
+
+```json
+[
+  {
+    "idx": 1,
+    "title": "示例文档",
+    "text": "文档正文",
+    "timestamp": "2026-07-13T08:00:00+08:00",
+    "importance_score": 0.8
+  }
+]
+```
+
+字段名可通过 `TIMESTAMP_METADATA_KEY`、`IMPORTANCE_METADATA_KEY` 配置；
+构建脚本对应使用 `--timestamp-metadata-key` 和 `--importance-metadata-key`。
+旧索引或缺少字段的文档会对相应评分项使用中性值 `0.5`。
 
 ### 异步批量推理（`scripts/batch_run.py`）
 

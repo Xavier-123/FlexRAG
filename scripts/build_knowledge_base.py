@@ -207,6 +207,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Max tokens per chunk (default: from KNOWLEDGE_CHUNK_SIZE setting).")
     parser.add_argument("--chunk-overlap", type=int, default=None,
                         help="Token overlap between chunks (default: from KNOWLEDGE_CHUNK_OVERLAP setting).")
+    parser.add_argument("--timestamp-metadata-key", type=str, default="timestamp",
+                        help="Metadata field containing an aware ISO-8601 document timestamp.")
+    parser.add_argument("--importance-metadata-key", type=str, default="importance_score",
+                        help="Metadata field containing a document importance value in [0, 1].")
 
     parser.add_argument("--embedding-base-url", type=str, default="http://127.0.0.1:8018/v1/embeddings",
                         help="Base URL for the embedding API.")
@@ -289,7 +293,12 @@ async def build(args: argparse.Namespace) -> None:
     source = args.input_dir if args.input_dir else args.files
     reader = SimpleDirectoryReader(
         input_dir=source,
-        file_extractor={".json": _CustomReader(chunk_size=chunk_size, chunk_overlap=chunk_overlap)}
+        file_extractor={".json": _CustomReader(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            timestamp_key=args.timestamp_metadata_key,
+            importance_key=args.importance_metadata_key,
+        )}
     )
 
     t0 = time.perf_counter()
